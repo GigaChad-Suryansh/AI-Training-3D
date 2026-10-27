@@ -1,0 +1,98 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <meta name="description" content="Watch a 3D robot learn from its mistakes. A reinforcement learning playground that runs entirely in your browser.">
+  <title>AI Training 3D</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='9' fill='%2311161e'/%3E%3Crect x='7' y='9' width='18' height='14' rx='7' fill='%23232b38'/%3E%3Ccircle cx='12.5' cy='16' r='2' fill='%234fdcc0'/%3E%3Ccircle cx='19.5' cy='16' r='2' fill='%234fdcc0'/%3E%3C/svg%3E">
+  <script>
+    // Apply a saved appearance before first paint so the page never flashes the wrong theme.
+    try { var t = localStorage.getItem('ai-training-3d:appearance'); if (t === 'light' || t === 'dark') document.documentElement.dataset.theme = t; } catch (e) {}
+  </script>
+</head>
+<body>
+  <main class="scene" id="scene">
+    <div class="stage-host" id="stageHost" role="img" aria-label="A small robot learning to reach a glowing beacon in a 3D maze"></div>
+    <p class="no-webgl" id="noWebgl" hidden>This browser can't draw the 3D view. The agent still learns, and the numbers in the inspector keep updating.</p>
+
+    <header class="toolbar glass" id="toolbar">
+      <div class="brand">
+        <svg viewBox="0 0 28 28" aria-hidden="true"><rect class="brand-face" x="1" y="4" width="26" height="20" rx="10"/><circle class="brand-eyes" cx="9.5" cy="14" r="2.6"/><circle class="brand-eyes" cx="18.5" cy="14" r="2.6"/></svg>
+        <span>AI Training 3D</span>
+      </div>
+      <div class="segmented levels" id="levels" role="group" aria-label="Level"></div>
+      <div class="segmented" id="appearance" role="group" aria-label="Appearance">
+        <button type="button" data-mode="system" aria-pressed="true" aria-label="Match system appearance" title="Match System">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="2.5" y="3.5" width="15" height="10" rx="2"/><path d="M7 16.5h6M10 13.5v3"/></svg>
+        </button>
+        <button type="button" data-mode="light" aria-pressed="false" aria-label="Light appearance" title="Light">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" aria-hidden="true"><circle cx="10" cy="10" r="3.4"/><path d="M10 2.5v1.8M10 15.7v1.8M2.5 10h1.8M15.7 10h1.8M4.7 4.7l1.3 1.3M14 14l1.3 1.3M15.3 4.7L14 6M6 14l-1.3 1.3"/></svg>
+        </button>
+        <button type="button" data-mode="dark" aria-pressed="false" aria-label="Dark appearance" title="Dark">
+          <svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M16.5 11.6A6.6 6.6 0 0 1 8.4 3.5a6.6 6.6 0 1 0 8.1 8.1z"/></svg>
+        </button>
+      </div>
+    </header>
+
+    <div class="status glass" id="status" data-phase="explore" aria-hidden="true">
+      <i class="dot"></i><span id="phaseText">Exploring</span><span class="muted" id="liveText">Attempt 1</span>
+    </div>
+
+    <div class="banner glass" id="banner" role="status" hidden></div>
+
+    <div class="dock" id="dock">
+      <div class="caption glass" id="captionBox" data-tone="think"><i class="dot"></i><span id="caption">Starting up.</span></div>
+      <div class="controls glass" role="group" aria-label="Playback">
+        <button class="round" id="play" type="button" aria-label="Pause">
+          <svg class="i-pause" viewBox="0 0 20 20" aria-hidden="true"><rect x="4.5" y="3.5" width="4" height="13" rx="1.2" fill="currentColor"/><rect x="11.5" y="3.5" width="4" height="13" rx="1.2" fill="currentColor"/></svg>
+          <svg class="i-play" viewBox="0 0 20 20" aria-hidden="true"><path d="M6 3.8v12.4a.8.8 0 0 0 1.2.7l9.6-6.2a.8.8 0 0 0 0-1.4L7.2 3.1A.8.8 0 0 0 6 3.8z" fill="currentColor"/></svg>
+        </button>
+        <div class="segmented" id="speed" role="group" aria-label="Speed">
+          <button type="button" data-speed="1" aria-pressed="true">1x</button>
+          <button type="button" data-speed="3" aria-pressed="false">3x</button>
+          <button type="button" data-speed="8" aria-pressed="false">8x</button>
+        </div>
+        <button class="btn" id="skip" type="button">Skip Ahead</button>
+        <button class="btn" id="reset" type="button">Reset Brain</button>
+      </div>
+    </div>
+  </main>
+
+  <aside class="inspector" id="inspector" aria-label="Progress and rewards">
+    <section class="group" aria-labelledby="h-level">
+      <header id="h-level">Level</header>
+      <p class="blurb" id="briefText"></p>
+      <label class="row switch-row" for="autoToggle"><span class="k">Advance When Mastered</span><input type="checkbox" id="autoToggle" checked></label>
+    </section>
+
+    <section class="group" aria-labelledby="h-progress">
+      <header id="h-progress">Progress</header>
+      <div class="row"><span class="k">Attempts</span><span class="v" id="stAttempts">0</span></div>
+      <div class="row"><span class="k">Success, Last 10</span><span class="v" id="stSuccess">0%</span></div>
+      <div class="meter" aria-hidden="true"><i id="barFill"></i></div>
+      <div class="row"><span class="k">Best Route</span><span class="v"><span id="stBest">&ndash;</span> <small>of <span id="stOpt"></span> steps</small></span></div>
+      <div class="row"><span class="k">Mistakes, Last Attempt</span><span class="v" id="stMist">&ndash;</span></div>
+      <svg id="chart" viewBox="0 0 320 124" role="img" aria-label="Steps per attempt"></svg>
+      <div class="legend"><span><i class="d"></i>Shortest route</span><span><i></i>Fell in a pit</span><span><i class="h"></i>Ran out of time</span></div>
+    </section>
+
+    <details class="group" open>
+      <summary>Rewards</summary>
+      <p class="note">The agent only chases points. Change them and watch its behavior shift within a few attempts.</p>
+      <div class="presets"><div class="segmented" id="presets" role="group" aria-label="Reward presets"></div></div>
+      <div id="rewards"></div>
+    </details>
+
+    <details class="group">
+      <summary>Display</summary>
+      <label class="row switch-row" for="heatToggle"><span class="k">Show What It Expects</span><input type="checkbox" id="heatToggle" checked></label>
+      <p class="note" style="margin-top:6px">Brighter floor tiles are places the agent expects to lead to the beacon. Drag the scene to look around.</p>
+    </details>
+  </aside>
+
+  <div class="sr-only" id="srStatus" aria-live="polite"></div>
+  <script type="module" src="/src/main.js"></script>
+</body>
+</html>
