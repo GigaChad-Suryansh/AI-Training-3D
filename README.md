@@ -11,8 +11,11 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 - **Watch it learn.** The floor glows brighter where the robot expects reward, and a chart shows steps per attempt falling toward the shortest route.
 - **Climb four levels.** First Steps, Walls, Pits, then Key and Door. Each adds one skill, and the robot moves on once it solves a level reliably.
 - **Change what it wants.** Edit the reward for reaching the beacon, hitting a wall, falling into a pit and more. The Cautious and Reckless presets show how behavior follows incentives.
+- **Compare runs.** Save a run, then reset the brain or change the rewards and train again. Up to four saved runs per level are drawn on one chart, with a dot where each one mastered the level and a tag on the fastest. Runs are kept in your browser.
 - **Look around.** Drag the scene to orbit. Pause, change speed, skip ahead 25 attempts, or reset its brain.
 - **Light, Dark or System.** The toolbar pins an appearance. The default follows your system.
+
+![Comparing three saved runs on one chart](docs/compare.png)
 
 ## How the learning works
 
@@ -39,18 +42,17 @@ npm run build    # static site in dist/
 
 ```
 src/
-  core/    levels, environment, Q-learning agent, mastery rule (no DOM)
+  core/    levels, environment, Q-learning agent, mastery rule, saved runs (no DOM)
   view/    three.js scene and light/dark palettes
   ui/      chart and appearance control
   main.js  the loop that connects them
-tests/     checks that every level is solvable and the agent masters all four
+tests/     every level is solvable, the agent masters all four, saved runs behave
 ```
 
 The tests run the agent on 10 random seeds and fail if any seed does not reach mastery on every level.
 
 ## Ideas for next
 
-- Save runs and compare them side by side
 - Move to a small neural network (DQN) with TensorFlow.js
 - Moving obstacles and a prompt-to-maze generator
 - Share a level and its rewards through a link

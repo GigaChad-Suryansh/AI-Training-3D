@@ -29,6 +29,10 @@
   --amber-fill: #f0a21a;
   --blue-fill: #4c82f7;
   --focus: #0a6cff;
+  --run0: #3f73e8;
+  --run1: #7c4de0;
+  --run2: #d6336c;
+  --run3: #5f7f12;
   --ui: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI Variable Text", "Segoe UI", system-ui, Roboto, sans-serif;
   --rounded: ui-rounded, "SF Pro Rounded", "Segoe UI Variable Display", "Segoe UI", system-ui, sans-serif;
   --gutter: max(16px, env(safe-area-inset-left, 0px));
@@ -59,6 +63,10 @@
     --amber-fill: #ffd37a;
     --blue-fill: #8db4ff;
     --focus: #6cb0ff;
+    --run0: #8db4ff;
+    --run1: #b79cff;
+    --run2: #ff8fb3;
+    --run3: #b5d56a;
     color-scheme: dark;
   }
 }
@@ -86,6 +94,10 @@
   --amber-fill: #ffd37a;
   --blue-fill: #8db4ff;
   --focus: #6cb0ff;
+  --run0: #8db4ff;
+  --run1: #b79cff;
+  --run2: #ff8fb3;
+  --run3: #b5d56a;
   color-scheme: dark;
 }
 
@@ -228,6 +240,18 @@ button { -webkit-tap-highlight-color: transparent; }
 #chart .ln { fill: none; stroke: var(--accent-fill); stroke-width: 2.2; stroke-linejoin: round; stroke-linecap: round; }
 #chart .pf { fill: var(--warn-fill); }
 #chart .pt { fill: none; stroke: var(--amber-fill); stroke-width: 1.6; }
+#chart .ov { fill: none; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; opacity: 0.95; }
+#chart .mk { stroke: var(--glass-strong); stroke-width: 2; }
+#chart .mk.cur { fill: var(--accent-fill); }
+#chart .r0, .swatch .r0 { stroke: var(--run0); fill: var(--run0); }
+#chart .r1, .swatch .r1 { stroke: var(--run1); fill: var(--run1); }
+#chart .r2, .swatch .r2 { stroke: var(--run2); fill: var(--run2); }
+#chart .r3, .swatch .r3 { stroke: var(--run3); fill: var(--run3); }
+#chart .ov.r0, .swatch .r0 { stroke-dasharray: none; }
+#chart .ov.r1, .swatch .r1 { stroke-dasharray: 7 4; }
+#chart .ov.r2, .swatch .r2 { stroke-dasharray: 2 4; }
+#chart .ov.r3, .swatch .r3 { stroke-dasharray: 9 4 2 4; }
+#chart .ov { fill: none; }
 #chart .pe { fill: var(--accent-fill); stroke: var(--glass-strong); stroke-width: 2; }
 .legend { display: flex; flex-wrap: wrap; gap: 14px; padding: 6px 0 12px; color: var(--label-3); font-size: 0.75rem; }
 .legend span { display: inline-flex; align-items: center; gap: 6px; }
@@ -235,6 +259,22 @@ button { -webkit-tap-highlight-color: transparent; }
 .legend i.h { background: transparent; border: 1.5px solid var(--amber-fill); }
 .legend i.d { width: 14px; height: 0; border-radius: 0; background: none; border-top: 1.5px dashed var(--amber-fill); }
 
+.btn.wide { width: 100%; margin-bottom: 6px; }
+.btn:disabled { opacity: 0.45; cursor: not-allowed; }
+.runs { list-style: none; margin: 4px 0 8px; padding: 0; }
+.run { display: grid; grid-template-columns: 30px minmax(0, 1fr) auto auto; align-items: center; gap: 4px 8px; padding: 10px 0; border-top: 1px solid var(--sep); }
+.run.empty { display: block; color: var(--label-3); font-size: 0.8125rem; border-top: 0; padding: 6px 0; }
+.swatch { width: 30px; height: 10px; }
+.swatch line { stroke-width: 2.4; fill: none; stroke-linecap: round; }
+.run .info { min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.run .title { display: flex; align-items: center; gap: 8px; font-weight: 600; font-size: 0.875rem; }
+.run .title span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.run .tag { font: 600 0.6875rem var(--ui); padding: 1px 7px; border-radius: 99px; background: var(--accent-fill); color: var(--on-accent); flex: none; }
+.run small { color: var(--label-2); font-size: 0.75rem; line-height: 1.35; }
+.icon-btn { appearance: none; border: 0; background: transparent; cursor: pointer; width: 34px; height: 34px; border-radius: 10px; display: grid; place-items: center; color: var(--label-2); }
+.icon-btn:hover { background: var(--fill); color: var(--label); }
+.icon-btn[aria-pressed="false"] { color: var(--label-3); }
+.icon-btn svg { width: 18px; height: 18px; }
 .presets { margin: 4px 0 14px; display: flex; }
 .presets .segmented { width: 100%; }
 .presets button { flex: 1; }
@@ -252,6 +292,7 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius
 
 /* ---------- touch and small screens ---------- */
 @media (pointer: coarse) {
+  .icon-btn { width: 44px; height: 44px; }
   .segmented button { min-height: 44px; }
   .btn { min-height: 44px; }
   .row { min-height: 48px; }

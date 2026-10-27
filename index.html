@@ -74,8 +74,16 @@
       <div class="meter" aria-hidden="true"><i id="barFill"></i></div>
       <div class="row"><span class="k">Best Route</span><span class="v"><span id="stBest">&ndash;</span> <small>of <span id="stOpt"></span> steps</small></span></div>
       <div class="row"><span class="k">Mistakes, Last Attempt</span><span class="v" id="stMist">&ndash;</span></div>
-      <svg id="chart" viewBox="0 0 320 124" role="img" aria-label="Steps per attempt"></svg>
+      <svg id="chart" viewBox="0 0 320 150" role="img" aria-label="Steps per attempt"></svg>
       <div class="legend"><span><i class="d"></i>Shortest route</span><span><i></i>Fell in a pit</span><span><i class="h"></i>Ran out of time</span></div>
+      <p class="note" id="chartNote" hidden>The teal line is this run. Curves show a 5-attempt average, and a dot marks the attempt where a run mastered the level.</p>
+    </section>
+
+    <section class="group" aria-labelledby="h-runs">
+      <header id="h-runs">Compare Runs</header>
+      <p class="note">Save a run, then reset the brain or change the rewards and train again. Saved runs for this level appear on the chart.</p>
+      <button class="btn primary wide" id="saveRun" type="button">Save Current Run</button>
+      <ul class="runs" id="runList" aria-label="Saved runs for this level"></ul>
     </section>
 
     <details class="group" open>

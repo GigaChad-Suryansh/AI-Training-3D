@@ -2,6 +2,7 @@ import './styles/main.css';
 import { EV, LEVELS } from './core/levels.js';
 import { Agent, Env, REWARDS, DEFAULT_REWARDS, epsilonFor, runEpisode } from './core/agent.js';
 import { isMastered, recentSuccess } from './core/mastery.js';
+import { MAX_RUNS_PER_LEVEL, addRun, describeRewards, fastestRunId, loadRuns, packAttempts, presetName, removeRun, runsForLevel, saveRuns, summarize, unpackAttempts } from './core/runs.js';
 import { createStage } from './view/stage.js';
 import { initAppearance } from './ui/theme.js';
 import { drawChart } from './ui/chart.js';
@@ -10,7 +11,8 @@ const $ = (s, r) => (r || document).querySelector(s);
 const agent = new Agent(Math.max(...LEVELS.map(l => l.W * l.H)) * 2);
 const S = {
   li: 0, L: null, env: null, attempts: [], tries: 0, paused: false, speed: 1, mastered: false, victory: 0,
-  masteredAt: LEVELS.map(() => null), auto: true, heat: true, phase: 'end', wait: 0, best: Infinity
+  masteredAt: LEVELS.map(() => null), auto: true, heat: true, phase: 'end', wait: 0, best: Infinity,
+  masteredNow: null, rewardsEdited: false, runs: loadRuns(), hidden: new Set()
 };
 
 const stage = createStage($('#stageHost'));
@@ -67,6 +69,7 @@ function renderStats() {
   $('#stBest').textContent = isFinite(S.best) ? S.best : '–';
   $('#stOpt').textContent = S.L.optimal;
   $('#stMist').textContent = last ? last.mistakes : '–';
+  $('#saveRun').disabled = n < 5;
   const [key, label] = phase();
   $('#status').dataset.phase = key; $('#phaseText').textContent = label;
 }
@@ -101,11 +104,11 @@ const hideBanner = () => { $('#banner').hidden = true; };
 /* ---------- episode flow ---------- */
 function loadLevel(i) {
   S.li = i; S.L = LEVELS[i]; S.env = new Env(S.L);
-  S.attempts = []; S.tries = 0; S.mastered = false; S.victory = 0; S.best = Infinity;
+  S.attempts = []; S.tries = 0; S.mastered = false; S.victory = 0; S.best = Infinity; S.masteredNow = null; S.rewardsEdited = false;
   hideBanner(); view.loadLevel(S.L);
   $('#briefText').textContent = `${S.L.name}. ${S.L.brief}`;
   $('.rw[data-k="key"]').classList.toggle('off', !S.L.key);
-  renderLevels(); renderStats(); drawChart($('#chart'), S.L, S.attempts);
+  renderLevels(); renderStats(); renderRuns(); redraw();
   startEpisode();
 }
 function resetBrain() { agent.wipe(); S.masteredAt = LEVELS.map(() => null); loadLevel(S.li); }
@@ -127,7 +130,7 @@ function bookkeep(st) {
   if (S.mastered) {
     if (st.ok) S.victory++; else { S.mastered = false; S.victory = 0; hideBanner(); }
   } else if (isMastered(S.attempts, S.L.optimal)) {
-    S.mastered = true; S.victory = 0; S.masteredAt[S.li] = S.attempts.length; renderLevels();
+    S.mastered = true; S.victory = 0; S.masteredAt[S.li] = S.attempts.length; if (!S.masteredNow) S.masteredNow = S.attempts.length; renderLevels();
     const n = S.attempts.length;
     if (S.li === LEVELS.length - 1) {
       showBanner('All Four Levels Mastered', `The last skill took ${n} attempts. Change the rewards and watch it adapt.`, [{ label: 'Start Over', fn: resetBrain }]);
@@ -135,7 +138,7 @@ function bookkeep(st) {
       showBanner(`Level ${S.L.id} Mastered`, `Solved reliably after ${n} attempts.${S.auto ? ' Moving on after a couple of victory laps.' : ''}`, [{ label: 'Next Level', fn: () => loadLevel(S.li + 1) }]);
     }
   }
-  renderStats(); drawChart($('#chart'), S.L, S.attempts);
+  renderStats(); redraw();
   $('#srStatus').textContent = `Attempt ${S.attempts.length} ${st.ok ? `reached the beacon in ${st.steps} steps` : 'did not reach the beacon'}.`;
 }
 const epsilon = () => (S.mastered ? 0 : epsilonFor(S.tries));
@@ -219,6 +222,7 @@ const PRESETS = {
 };
 function rewardsChanged() {
   S.tries = Math.min(S.tries, 25); // curiosity returns so it can re-test old habits
+  if (S.attempts.length) S.rewardsEdited = true;
   if (S.mastered) { S.mastered = false; S.victory = 0; hideBanner(); renderStats(); }
 }
 RW.forEach(r => {
@@ -239,6 +243,65 @@ Object.keys(PRESETS).forEach(name => {
     rewardsChanged(); caption(`Rewards set to ${name}. They apply from the next move.`, 'think');
   });
   $('#presets').appendChild(b);
+});
+
+
+/* ---------- compare runs ---------- */
+const EYE = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10z"/><circle cx="10" cy="10" r="2.4"/></svg>';
+const EYE_OFF = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5l15 15M8.2 4.7C8.8 4.6 9.4 4.5 10 4.5c5 0 8.2 5.5 8.2 5.5s-.8 1.4-2.2 2.8M5.3 6.3C3.1 7.8 1.8 10 1.8 10s3.2 5.5 8.2 5.5c1.3 0 2.5-.4 3.5-.9"/></svg>';
+const TRASH = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V3.8h4v1.7M5.5 5.5l.7 10.2h7.6l.7-10.2M8.4 9v4.2M11.6 9v4.2"/></svg>';
+
+const levelRuns = () => runsForLevel(S.runs, S.L.id);
+const visibleOverlays = () => levelRuns().filter(r => !S.hidden.has(r.id)).map(r => ({ slot: r.slot, name: r.name, attempts: unpackAttempts(r.attempts), masteredAt: r.masteredAt }));
+function redraw() {
+  const overlays = visibleOverlays();
+  drawChart($('#chart'), S.L, { attempts: S.attempts, masteredAt: S.masteredNow }, overlays);
+  $('#chartNote').hidden = overlays.length === 0;
+}
+
+function renderRuns() {
+  const list = $('#runList'); list.textContent = '';
+  const runs = levelRuns(), fastest = fastestRunId(runs);
+  if (!runs.length) {
+    const li = document.createElement('li'); li.className = 'run empty'; li.textContent = 'No saved runs for this level yet.'; list.appendChild(li);
+  }
+  runs.forEach(r => {
+    const sum = summarize(r), shown = !S.hidden.has(r.id);
+    const li = document.createElement('li'); li.className = 'run';
+    li.innerHTML = '<svg class="swatch" viewBox="0 0 30 10" aria-hidden="true"><line x1="2" x2="28" y1="5" y2="5"/></svg>'
+      + '<div class="info"><div class="title"><span></span></div><small class="a"></small><small class="b"></small></div>'
+      + '<button type="button" class="icon-btn eye"></button><button type="button" class="icon-btn del"></button>';
+    $('.swatch line', li).setAttribute('class', 'r' + r.slot);
+    $('.title span', li).textContent = r.name;
+    if (r.id === fastest) { const t = document.createElement('i'); t.className = 'tag'; t.style.fontStyle = 'normal'; t.textContent = 'Fastest'; $('.title', li).appendChild(t); }
+    $('.a', li).textContent = sum.masteredAt
+      ? `Mastered in ${sum.masteredAt} attempts, best route ${sum.best}`
+      : `${sum.attempts} attempts, not mastered${sum.best ? `, best route ${sum.best}` : ''}`;
+    $('.b', li).textContent = describeRewards(r.rewards, DEFAULT_REWARDS);
+    const eye = $('.eye', li), del = $('.del', li);
+    eye.innerHTML = shown ? EYE : EYE_OFF; eye.setAttribute('aria-pressed', shown ? 'true' : 'false');
+    eye.setAttribute('aria-label', `${shown ? 'Hide' : 'Show'} ${r.name} on the chart`); eye.title = shown ? 'Hide on chart' : 'Show on chart';
+    del.innerHTML = TRASH; del.setAttribute('aria-label', `Delete ${r.name}`); del.title = 'Delete run';
+    eye.addEventListener('click', () => { shown ? S.hidden.add(r.id) : S.hidden.delete(r.id); renderRuns(); redraw(); });
+    del.addEventListener('click', () => { S.runs = removeRun(S.runs, r.id); S.hidden.delete(r.id); saveRuns(S.runs); renderRuns(); redraw(); });
+    list.appendChild(li);
+  });
+}
+
+$('#saveRun').addEventListener('click', () => {
+  const base = S.rewardsEdited ? 'Mixed rewards' : presetName(REWARDS, PRESETS);
+  const same = levelRuns().filter(r => r.name === base || r.name.startsWith(base + ' ')).length;
+  const run = {
+    id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)),
+    levelId: S.L.id, name: same ? `${base} ${same + 1}` : base, savedAt: Date.now(),
+    rewards: { ...REWARDS }, attempts: packAttempts(S.attempts.slice(0, 300)), masteredAt: S.masteredNow && S.masteredNow <= 300 ? S.masteredNow : null
+  };
+  const res = addRun(S.runs, run);
+  if (res.error) { caption(`This level already has ${MAX_RUNS_PER_LEVEL} saved runs. Delete one to save another.`, 'bad'); return; }
+  S.runs = res.runs;
+  const stored = saveRuns(S.runs);
+  caption(stored ? `Saved ${run.name}. Reset the brain or change the rewards, then train again to compare.` : `Saved ${run.name} for this visit only. Browser storage is unavailable.`, 'think');
+  renderRuns(); redraw();
 });
 
 /* ---------- go ---------- */
