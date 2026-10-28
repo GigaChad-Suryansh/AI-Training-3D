@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { starterRows, paint, validate, loadCustom, saveCustom, SIZE } from '../src/core/custom.js';
+import { starterRows, paint, validate, loadCustom, saveCustom, encodeMaze, decodeMaze, SIZE } from '../src/core/custom.js';
 
 const mem = () => { const m = new Map(); return { getItem: k => m.get(k) ?? null, setItem: (k, v) => m.set(k, v) }; };
 
@@ -31,4 +31,12 @@ test('storage round trips and falls back safely', () => {
   saveCustom(r, s); assert.deepEqual(loadCustom(s), r);
   assert.deepEqual(loadCustom(mem()), starterRows());
   s.setItem('ai-training-3d:custom-maze:v1', '"junk"'); assert.deepEqual(loadCustom(s), starterRows());
+});
+test('share codes round trip and reject junk', () => {
+  const r = paint(starterRows(), 1, 1, 'P'), code = encodeMaze(r);
+  assert.equal(code.length, 81); assert.ok(!code.includes('#'));
+  assert.deepEqual(decodeMaze(code), r);
+  assert.equal(decodeMaze('hello'), null);
+  assert.equal(decodeMaze('x'.repeat(81)), null);
+  assert.equal(decodeMaze('W'.repeat(81)), null); // no start or beacon
 });

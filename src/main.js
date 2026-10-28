@@ -9,11 +9,12 @@ import { initAppearance } from './ui/theme.js';
 import { drawChart, drawRace } from './ui/chart.js';
 import { initTokenDrag } from './ui/dragdrop.js';
 import { initEditor } from './ui/editor.js';
-import { loadCustom, saveCustom, validate } from './core/custom.js';
+import { loadCustom, saveCustom, validate, decodeMaze } from './core/custom.js';
 
 const $ = (s, r) => (r || document).querySelector(s);
 const BUILTIN = LEVELS.length;
-let customRows = loadCustom();
+const sharedRows = (() => { try { return decodeMaze(new URLSearchParams(location.hash.slice(1)).get('maze')); } catch (e) { return null; } })();
+let customRows = sharedRows || loadCustom();
 const levels = [...LEVELS, validate(customRows).level];
 const NUM_STATES = Math.max(...levels.map(l => l.W * l.H)) * 2;
 
@@ -421,8 +422,13 @@ $('#saveRun').addEventListener('click', () => {
 });
 
 /* ---------- maze editor ---------- */
-initEditor({
+const editor = initEditor({
   rows: customRows,
+  onShare: async code => {
+    const url = `${location.origin}${location.pathname}#maze=${code}`;
+    try { await navigator.clipboard.writeText(url); caption('Link copied. Anyone who opens it gets your maze to train on.', 'think'); }
+    catch (e) { history.replaceState(null, '', '#maze=' + code); caption('Copy the address bar to share this maze.', 'think'); }
+  },
   onApply: rows => {
     const v = validate(rows); if (!v.ok) return;
     customRows = rows; saveCustom(rows);
@@ -434,7 +440,8 @@ initEditor({
 });
 
 /* ---------- go ---------- */
-loadLevel(0);
+loadLevel(sharedRows ? BUILTIN : 0);
+if (sharedRows) { saveCustom(sharedRows); caption('Opened a shared maze. Press Skip Ahead or just watch the robot learn it.', 'think'); }
 measureInsets();
 requestAnimationFrame(loop);
 window.__lab = { S, robots, skip, loadLevel, addRobot }; // handy in the console and in screenshots

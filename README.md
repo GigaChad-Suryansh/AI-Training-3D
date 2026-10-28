@@ -17,7 +17,7 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 
 - **Add more robots by drag and drop.** Drag the robot token from the tray onto the maze (or tap it, or press Add Robot) to drop in another learner, up to four. Each has its own brain, color and number, so you can watch them race on one chart. Select a robot to see its map and progress. Saved runs are for single-robot sessions.
 
-- **Build your own maze.** Level 5, Your Maze, has a 9 by 9 editor. Pick a tile (floor, wall, pit, key, door, start, beacon) and click or drag across the grid to paint it. The editor checks that the beacon can be reached and shows the shortest route before you train on it. Your maze is kept in your browser.
+- **Build your own maze.** Level 5, Your Maze, has a 9 by 9 editor. Pick a tile (floor, wall, pit, key, door, start, beacon) and click or drag across the grid to paint it. The editor checks that the beacon can be reached and shows the shortest route before you train on it. Your maze is kept in your browser, and Copy Share Link gives you a URL that opens the same maze for anyone.
 
 - **A plain-language guide.** The `learn.html` page (linked from the lab) explains how the robot learns, with three small experiments: one learning step with sliders, a real corridor you can train, and the curiosity dial.
 
