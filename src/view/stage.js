@@ -1,6 +1,9 @@
 /**
- * The 3D stage: a small diorama with a robot, a beacon, walls, pits and a key.
- * It only draws. All learning lives in src/core.
+ * The 3D stage: a small diorama with up to four robots, a beacon, walls, pits,
+ * a key and a gate. It only draws. All learning lives in src/core.
+ *
+ * Robots are independent, so the key and gate are drawn for the selected robot:
+ * the key stays put, and the gate fades when the selected robot is carrying it.
  */
 import * as THREE from 'three';
 import { RoundedBoxGeometry } from 'three/examples/jsm/geometries/RoundedBoxGeometry.js';
@@ -16,6 +19,8 @@ const angDiff = (a, b) => {
   if (d < -Math.PI) d += Math.PI * 2;
   return d;
 };
+const OFFSETS = [[-0.17, -0.17], [0.17, -0.17], [-0.17, 0.17], [0.17, 0.17]]; // keeps robots on one tile from overlapping
+const MOODS = { think: 'accent', bad: 'warn', key: 'amber', happy: 'accent' };
 
 export function createStage(host) {
   let renderer;
@@ -38,12 +43,13 @@ export function createStage(host) {
   let pal = PALETTES.light, palName = 'light';
   let level = null, lvl = null, w3 = 1, h3 = 1, time = 0, last = performance.now();
   let insets = { top: 0, right: 0, bottom: 0, left: 0 };
-  let lastHeat = null;
+  let lastHeat = null, focusHasKey = false, spread = 0;
+  const bots = [];
 
-  /* ---------- theming: every accent-colored material registers here ---------- */
+  /* ---------- theming: every palette-colored material registers here ---------- */
   const baseTints = [], levelTints = [];
   const tint = (list, mat, key, extra) => { list.push({ mat, key, extra }); mat.color.setHex(pal[key]); if (extra === 'emissive') mat.emissive.setHex(pal[key]); return mat; };
-  function retint(list) { list.forEach(t => { t.mat.color.setHex(pal[t.key]); if (t.extra === 'emissive') t.mat.emissive.setHex(pal[t.key]); }); }
+  const retint = list => list.forEach(t => { t.mat.color.setHex(pal[t.key]); if (t.extra === 'emissive') t.mat.emissive.setHex(pal[t.key]); });
 
   /* ---------- textures ---------- */
   function radialTexture(stops) {
@@ -61,10 +67,8 @@ export function createStage(host) {
     tint(list, m, key);
     const s = new THREE.Sprite(m); s.scale.set(size, size, 1); s.userData.base = opacity; return s;
   };
-  const flatMat = (list, key, opacity) => {
-    const m = new THREE.MeshBasicMaterial({ transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide });
-    return tint(list, m, key);
-  };
+  const flatMat = (list, key, opacity) => tint(list, new THREE.MeshBasicMaterial({ transparent: true, opacity, depthWrite: false, side: THREE.DoubleSide }), key);
+  const luminance = hex => { const c = new THREE.Color(hex); return 0.2126 * c.r + 0.7152 * c.g + 0.0722 * c.b; };
 
   /* ---------- lights, table, shadows ---------- */
   const hemi = new THREE.HemisphereLight(0xffffff, 0x8a94a8, 0.5); scene.add(hemi);
@@ -75,58 +79,167 @@ export function createStage(host) {
   const table = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.ShadowMaterial({ opacity: 0.22 }));
   table.rotation.x = -Math.PI / 2; table.position.y = -0.34; table.receiveShadow = true; scene.add(table);
 
-  /* ---------- robot ---------- */
-  const bot = { x: 0, z: 0, fx: 0, fz: 0, tx: 0, tz: 0, t: 1, dur: 0.2, kind: 'step', yaw: 0, tyaw: 0, shake: 0, scale: 1, spawn: 0, fall: 0, joy: 0, dx: 0, dz: 0, mood: 'think', moodT: 0, blink: 2.5 };
-  const botRoot = new THREE.Group(), botInner = new THREE.Group(); botRoot.add(botInner);
+  /* ---------- robots ---------- */
   const bodyMat = new THREE.MeshPhysicalMaterial({ roughness: 0.3, clearcoat: 0.7, clearcoatRoughness: 0.25 });
   const faceMat = new THREE.MeshPhysicalMaterial({ roughness: 0.12, clearcoat: 1, clearcoatRoughness: 0.08 });
-  const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.2, 0.2, 10, 32), bodyMat); body.position.y = 0.37; body.castShadow = true; botInner.add(body);
-  const face = new THREE.Mesh(new THREE.SphereGeometry(0.15, 32, 24), faceMat); face.scale.set(1.05, 0.82, 0.5); face.position.set(0, 0.42, 0.14); botInner.add(face);
-  const eyeMat = new THREE.MeshBasicMaterial({ transparent: true });
-  const eyes = [-1, 1].map(s => { const e = new THREE.Mesh(new THREE.CapsuleGeometry(0.02, 0.035, 6, 12), eyeMat); e.position.set(s * 0.06, 0.43, 0.205); botInner.add(e); return e; });
-  const earMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 }); tint(baseTints, earMat, 'accent');
-  [-1, 1].forEach(s => { const ear = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.035, 24), earMat); ear.rotation.z = Math.PI / 2; ear.position.set(s * 0.2, 0.38, 0); botInner.add(ear); });
-  const blob = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
-  blob.rotation.x = -Math.PI / 2; blob.position.y = 0.004; botRoot.add(blob);
-  const underglow = glowSprite(baseTints, 'accent', 1.5, 0.5); underglow.position.y = 0.06; botRoot.add(underglow);
-  const botLight = new THREE.PointLight(0xffffff, 0, 3, 2); botLight.position.y = 0.35; botRoot.add(botLight); tint(baseTints, { color: botLight.color }, 'accent');
-  scene.add(botRoot);
-  const MOODS = { think: 'accent', bad: 'warn', key: 'amber', happy: 'accent' };
-  function setMood(m) { bot.mood = m; eyeMat.color.setHex(pal[MOODS[m] || 'accent']); bot.moodT = m === 'think' ? 0 : 1.1; }
+  const bodyGeo = new THREE.CapsuleGeometry(0.2, 0.2, 10, 32);
+  const faceGeo = new THREE.SphereGeometry(0.15, 32, 24);
+  const eyeGeo = new THREE.CapsuleGeometry(0.02, 0.035, 6, 12);
+  const earGeo = new THREE.CylinderGeometry(0.055, 0.055, 0.04, 24);
+  const ringGeo = new THREE.RingGeometry(0.34, 0.4, 56);
+
+  function drawBadge(bot) {
+    const c = bot.badgeCanvas, g = c.getContext('2d'), hex = pal['bot' + bot.slot];
+    g.clearRect(0, 0, 128, 128);
+    g.beginPath(); g.arc(64, 64, 52, 0, Math.PI * 2); g.fillStyle = '#' + new THREE.Color(hex).getHexString(THREE.SRGBColorSpace); g.fill();
+    g.lineWidth = 7; g.strokeStyle = palName === 'dark' ? 'rgba(10,14,20,0.9)' : 'rgba(255,255,255,0.95)'; g.stroke();
+    g.fillStyle = luminance(hex) > 0.35 ? '#04201a' : '#ffffff';
+    g.font = '700 64px ui-rounded, "SF Pro Rounded", system-ui, sans-serif'; g.textAlign = 'center'; g.textBaseline = 'middle';
+    g.fillText(String(bot.slot + 1), 64, 70);
+    bot.badgeTex.needsUpdate = true;
+  }
+
+  function addBot(slot) {
+    const s = { x: 0, z: 0, fx: 0, fz: 0, tx: 0, tz: 0, t: 1, dur: 0.2, kind: 'step', yaw: 0, tyaw: 0, shake: 0, scale: 1, spawn: 0, fall: 0, joy: 0, drop: 0, dx: 0, dz: 0, mood: 'think', moodT: 0, blink: 1.5 + slot * 0.7, focused: false };
+    const root = new THREE.Group(), inner = new THREE.Group(); root.add(inner);
+    const body = new THREE.Mesh(bodyGeo, bodyMat); body.position.y = 0.37; body.castShadow = true; inner.add(body);
+    const face = new THREE.Mesh(faceGeo, faceMat); face.scale.set(1.05, 0.82, 0.5); face.position.set(0, 0.42, 0.14); inner.add(face);
+    const eyeMat = new THREE.MeshBasicMaterial({ transparent: true });
+    const eyes = [-1, 1].map(sd => { const e = new THREE.Mesh(eyeGeo, eyeMat); e.position.set(sd * 0.06, 0.43, 0.205); inner.add(e); return e; });
+    const own = []; // per-robot materials, tinted by the robot's color
+    const earMat = new THREE.MeshStandardMaterial({ roughness: 0.5, metalness: 0.1 }); tint(own, earMat, 'bot' + slot);
+    [-1, 1].forEach(sd => { const ear = new THREE.Mesh(earGeo, earMat); ear.rotation.z = Math.PI / 2; ear.position.set(sd * 0.2, 0.38, 0); inner.add(ear); });
+    const blob = new THREE.Mesh(new THREE.PlaneGeometry(0.9, 0.9), new THREE.MeshBasicMaterial({ map: blobTex, color: 0x000000, transparent: true, opacity: 0.3, depthWrite: false }));
+    blob.rotation.x = -Math.PI / 2; blob.position.y = 0.004; root.add(blob);
+    const underglow = glowSprite(own, 'bot' + slot, 1.5, 0.5); underglow.position.y = 0.06; root.add(underglow);
+    const ring = new THREE.Mesh(ringGeo, flatMat(own, 'bot' + slot, 0.9)); ring.rotation.x = -Math.PI / 2; ring.position.y = 0.02; ring.visible = false; root.add(ring);
+    const light = new THREE.PointLight(0xffffff, 0, 3, 2); light.position.y = 0.35; root.add(light); tint(own, { color: light.color }, 'bot' + slot);
+    const badgeCanvas = document.createElement('canvas'); badgeCanvas.width = badgeCanvas.height = 128;
+    const badgeTex = new THREE.CanvasTexture(badgeCanvas); badgeTex.colorSpace = THREE.SRGBColorSpace;
+    const badge = new THREE.Sprite(new THREE.SpriteMaterial({ map: badgeTex, transparent: true, depthTest: false })); badge.scale.set(0.3, 0.3, 1); badge.position.y = 0.98; badge.renderOrder = 10; badge.visible = false; root.add(badge);
+    scene.add(root);
+
+    const bot = { slot, s, root, inner, eyeMat, eyes, blob, underglow, ring, light, badge, badgeCanvas, badgeTex, own, trailLine: null, trailDots: null, trailPos: null, trailN: 0, maxTrail: 0 };
+    drawBadge(bot);
+    bots.push(bot); applyBotLook(bot); setMood(bot, 'think');
+    if (level) { buildTrail(bot); placeBot(bot, level.start.x, level.start.y); }
+    refreshBadges();
+    return handle(bot);
+  }
+
+  const refreshBadges = () => bots.forEach(b => { b.badge.visible = bots.length > 1; });
+  function applyBotLook(bot) {
+    retint(bot.own); drawBadge(bot);
+    bot.eyeMat.color.setHex(pal[MOODS[bot.s.mood] || 'accent']);
+    bot.light.intensity = palName === 'dark' ? 4 : 0;
+  }
+  function setMood(bot, m) { bot.s.mood = m; bot.eyeMat.color.setHex(pal[MOODS[m] || 'accent']); bot.s.moodT = m === 'think' ? 0 : 1.1; }
+  function placeBot(bot, x, y) { const s = bot.s; s.x = s.fx = s.tx = wx(x); s.z = s.fz = s.tz = wz(y); s.t = 1; s.fall = 0; s.joy = 0; s.shake = 0; }
+  function spawnBot(bot) { bot.s.spawn = 0.0001; bot.s.scale = 0.001; bot.s.fall = 0; setMood(bot, 'think'); }
+
+  function trailClear(bot) { bot.trailN = 0; if (bot.trailLine) { bot.trailLine.geometry.setDrawRange(0, 0); bot.trailDots.geometry.setDrawRange(0, 0); } }
+  function trailAdd(bot, x, y) {
+    if (!bot.trailLine || bot.trailN >= bot.maxTrail) return;
+    const o = OFFSETS[bot.slot], k = bots.length > 1 ? 0.6 : 0, p = bot.trailPos, i = bot.trailN * 3;
+    p[i] = wx(x) + o[0] * k; p[i + 1] = 0.05; p[i + 2] = wz(y) + o[1] * k; bot.trailN++;
+    bot.trailLine.geometry.attributes.position.needsUpdate = true; bot.trailDots.geometry.attributes.position.needsUpdate = true;
+    bot.trailLine.geometry.setDrawRange(0, bot.trailN); bot.trailDots.geometry.setDrawRange(0, bot.trailN);
+  }
+  function disposeTrail(bot) {
+    if (!bot.trailLine) return;
+    scene.remove(bot.trailLine); scene.remove(bot.trailDots); bot.trailLine.geometry.dispose(); bot.trailDots.geometry.dispose();
+    bot.trailLine = bot.trailDots = null;
+  }
+  function buildTrail(bot) {
+    disposeTrail(bot);
+    bot.maxTrail = level.maxSteps + 3; bot.trailPos = new Float32Array(bot.maxTrail * 3); bot.trailN = 0;
+    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(bot.trailPos, 3)); tg.setDrawRange(0, 0);
+    const lm = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.75 }); tint(bot.own, lm, 'bot' + bot.slot);
+    bot.trailLine = new THREE.Line(tg, lm);
+    const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(bot.trailPos, 3)); dg.setDrawRange(0, 0);
+    const dm = new THREE.PointsMaterial({ map: glowTex, size: 0.17, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }); tint(bot.own, dm, 'bot' + bot.slot);
+    bot.trailDots = new THREE.Points(dg, dm);
+    bot.trailLine.frustumCulled = false; bot.trailDots.frustumCulled = false; scene.add(bot.trailLine); scene.add(bot.trailDots);
+  }
+
+  /** kind: 'step' | 'bump' | 'fall' | 'goal' */
+  function moveBot(bot, px, py, a, nx, ny, kind, dur) {
+    const s = bot.s, d = DIRS[a]; s.tyaw = Math.atan2(d[0], d[1]);
+    s.fx = wx(px); s.fz = wz(py); s.tx = wx(nx); s.tz = wz(ny); s.dx = d[0]; s.dz = d[1];
+    s.kind = kind; s.t = 0; s.dur = Math.max(0.035, dur);
+    if (kind === 'bump') { s.tx = s.fx; s.tz = s.fz; s.shake = 1; }
+    if (kind === 'fall') s.fall = 0.0001;
+    if (kind === 'goal') s.joy = 0.0001;
+  }
+
+  function removeBot(bot) {
+    const i = bots.indexOf(bot); if (i < 0) return;
+    bots.splice(i, 1); disposeTrail(bot); scene.remove(bot.root);
+    bot.blob.material.dispose(); bot.badgeTex.dispose(); bot.badge.material.dispose();
+    bot.own.forEach(t => { if (t.mat.dispose) t.mat.dispose(); });
+    refreshBadges();
+  }
+
+  function handle(bot) {
+    return {
+      slot: bot.slot,
+      move: (px, py, a, nx, ny, kind, dur) => moveBot(bot, px, py, a, nx, ny, kind, dur),
+      setMood: m => setMood(bot, m),
+      place: (x, y) => placeBot(bot, x, y),
+      spawn: () => spawnBot(bot),
+      dropIn: () => { bot.s.drop = 0.0001; spawnBot(bot); },
+      trailClear: () => trailClear(bot),
+      trailAdd: (x, y) => trailAdd(bot, x, y),
+      setFocused: f => { bot.s.focused = f; },
+      remove: () => removeBot(bot)
+    };
+  }
 
   /* ---------- effects ---------- */
   const ripples = [];
-  for (let i = 0; i < 8; i++) {
+  for (let i = 0; i < 12; i++) {
     const m = new THREE.Mesh(new THREE.RingGeometry(0.2, 0.235, 64), flatMat(baseTints, 'accent', 0));
-    m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.visible = false; m.userData = { t: 1, max: 3, key: 'accent' }; scene.add(m); ripples.push(m);
+    m.rotation.x = -Math.PI / 2; m.position.y = 0.03; m.visible = false; m.userData = { t: 1, max: 3 }; scene.add(m); ripples.push(m);
   }
   const BURST = 48, bp = new Float32Array(BURST * 3).fill(-999), bvel = [], blife = new Float32Array(BURST);
   const bg = new THREE.BufferGeometry(); bg.setAttribute('position', new THREE.BufferAttribute(bp, 3));
   const burstMat = new THREE.PointsMaterial({ map: glowTex, size: 0.26, transparent: true, opacity: 0.95, depthWrite: false, blending: THREE.AdditiveBlending });
   const burstPts = new THREE.Points(bg, burstMat); burstPts.frustumCulled = false; scene.add(burstPts);
   for (let i = 0; i < BURST; i++) bvel.push(new THREE.Vector3());
-  retintBase();
-  function retintBase() { retint(baseTints); }
+
+  function ripple(x, y, key, max) {
+    const m = ripples.find(r => !r.visible) || ripples[0];
+    m.material.color.setHex(pal[key]); m.position.set(wx(x), 0.03, wz(y)); m.userData.t = 0; m.userData.max = max || 3.2; m.visible = true; m.scale.setScalar(0.4);
+  }
+  function burst(x, y, key) {
+    if (reduced) return;
+    burstMat.color.setHex(pal[key]);
+    const p = bg.attributes.position;
+    for (let i = 0; i < BURST; i++) {
+      p.setXYZ(i, wx(x), 0.5, wz(y));
+      const a = Math.random() * Math.PI * 2, sp = 0.7 + Math.random() * 1.5;
+      bvel[i].set(Math.cos(a) * sp, 1.2 + Math.random() * 2, Math.sin(a) * sp); blife[i] = 1;
+    }
+    p.needsUpdate = true;
+  }
 
   /* ---------- level objects ---------- */
-  let tiles = null, tileIndex = [], goalObj = null, keyObj = null, doorObj = null, pitGlows = [], trailLine = null, trailDots = null, trailPos = null, trailN = 0, maxTrail = 0;
+  let tiles = null, tileIndex = [], goalObj = null, keyObj = null, doorObj = null, pitGlows = [];
   const tmpC = new THREE.Color(), baseC = new THREE.Color(), hiC = new THREE.Color();
-  const cx = () => (level.W - 1) / 2, cz = () => (level.H - 1) / 2, wx = x => x - cx(), wz = y => y - cz();
+  const wx = x => x - (level.W - 1) / 2, wz = y => y - (level.H - 1) / 2;
 
   function clearLevel() {
     if (!lvl) return;
     scene.remove(lvl);
     lvl.traverse(o => { if (o.geometry) o.geometry.dispose(); });
     lvl = null; tiles = null; goalObj = keyObj = doorObj = null; pitGlows = []; tileIndex = []; levelTints.length = 0;
-    if (trailLine) { scene.remove(trailLine); scene.remove(trailDots); trailLine.geometry.dispose(); trailDots.geometry.dispose(); trailLine = trailDots = null; }
   }
 
   function loadLevel(L) {
     clearLevel(); level = L; lvl = new THREE.Group(); scene.add(lvl);
     const W = L.W, H = L.H, M = new THREE.Matrix4();
 
-    const plinthMat = new THREE.MeshStandardMaterial({ color: pal.plinth, roughness: 0.7 });
-    levelTints.push({ mat: plinthMat, key: 'plinth' });
+    const plinthMat = new THREE.MeshStandardMaterial({ roughness: 0.7 }); tint(levelTints, plinthMat, 'plinth');
     const plinth = new THREE.Mesh(new RoundedBoxGeometry(W + 0.5, 0.34, H + 0.5, 4, 0.14), plinthMat); plinth.position.y = -0.24; plinth.receiveShadow = true; plinth.castShadow = true; lvl.add(plinth);
 
     const floorCells = []; tileIndex = new Array(W * H).fill(-1);
@@ -166,64 +279,20 @@ export function createStage(host) {
       const shaft = new THREE.Mesh(new RoundedBoxGeometry(0.05, 0.28, 0.05, 2, 0.02), km); shaft.position.y = -0.06; keyObj.add(shaft);
       const tooth = new THREE.Mesh(new RoundedBoxGeometry(0.11, 0.045, 0.045, 2, 0.015), km); tooth.position.set(0.05, -0.15, 0); keyObj.add(tooth);
       const ks = glowSprite(levelTints, 'amber', 1.1, 0.45); ks.position.y = 0.05; keyObj.add(ks);
-      keyObj.userData = { gone: 0, taken: false }; lvl.add(keyObj);
+      keyObj.userData = { dim: 0, ks }; lvl.add(keyObj);
     }
     if (L.door) {
       const dm = new THREE.MeshPhysicalMaterial({ transparent: true, opacity: 0.55, roughness: 0.2, clearcoat: 1, emissiveIntensity: 0.25 }); tint(levelTints, dm, 'amber', 'emissive');
       doorObj = new THREE.Mesh(new RoundedBoxGeometry(0.9, 0.78, 0.9, 4, 0.12), dm); doorObj.position.set(wx(L.door.x), 0.33, wz(L.door.y));
-      doorObj.userData = { open: 0, opening: false }; lvl.add(doorObj);
+      doorObj.userData = { open: 0 }; lvl.add(doorObj);
     }
 
-    maxTrail = L.maxSteps + 3; trailPos = new Float32Array(maxTrail * 3);
-    const tg = new THREE.BufferGeometry(); tg.setAttribute('position', new THREE.BufferAttribute(trailPos, 3)); tg.setDrawRange(0, 0);
-    const lm = new THREE.LineBasicMaterial({ transparent: true, opacity: 0.7 }); tint(levelTints, lm, 'accent');
-    trailLine = new THREE.Line(tg, lm);
-    const dg = new THREE.BufferGeometry(); dg.setAttribute('position', new THREE.BufferAttribute(trailPos, 3)); dg.setDrawRange(0, 0);
-    const dm2 = new THREE.PointsMaterial({ map: glowTex, size: 0.17, transparent: true, opacity: 0.9, depthWrite: false, blending: THREE.AdditiveBlending }); tint(levelTints, dm2, 'accent');
-    trailDots = new THREE.Points(dg, dm2);
-    trailLine.frustumCulled = false; trailDots.frustumCulled = false; scene.add(trailLine); scene.add(trailDots); trailN = 0;
-
-    fit(); placeBot(L.start.x, L.start.y); spawnBot();
+    bots.forEach(b => { buildTrail(b); placeBot(b, L.start.x, L.start.y); spawnBot(b); });
+    if (lastHeat && lastHeat.length !== W * H) lastHeat = null;
+    fit();
   }
 
-  function trailClear() { trailN = 0; if (trailLine) { trailLine.geometry.setDrawRange(0, 0); trailDots.geometry.setDrawRange(0, 0); } }
-  function trailAdd(x, y) {
-    if (!trailLine || trailN >= maxTrail) return;
-    trailPos[trailN * 3] = wx(x); trailPos[trailN * 3 + 1] = 0.05; trailPos[trailN * 3 + 2] = wz(y); trailN++;
-    trailLine.geometry.attributes.position.needsUpdate = true; trailDots.geometry.attributes.position.needsUpdate = true;
-    trailLine.geometry.setDrawRange(0, trailN); trailDots.geometry.setDrawRange(0, trailN);
-  }
-
-  function placeBot(x, y) { bot.x = bot.fx = bot.tx = wx(x); bot.z = bot.fz = bot.tz = wz(y); bot.t = 1; bot.fall = 0; bot.joy = 0; bot.shake = 0; }
-  function spawnBot() { bot.spawn = 0.0001; bot.scale = 0.001; bot.fall = 0; setMood('think'); }
-
-  /** kind: 'step' | 'bump' | 'fall' | 'goal' */
-  function botMove(px, py, a, nx, ny, kind, dur) {
-    const d = DIRS[a]; bot.tyaw = Math.atan2(d[0], d[1]);
-    bot.fx = wx(px); bot.fz = wz(py); bot.tx = wx(nx); bot.tz = wz(ny); bot.dx = d[0]; bot.dz = d[1];
-    bot.kind = kind; bot.t = 0; bot.dur = Math.max(0.035, dur);
-    if (kind === 'bump') { bot.tx = bot.fx; bot.tz = bot.fz; bot.shake = 1; }
-    if (kind === 'fall') bot.fall = 0.0001;
-    if (kind === 'goal') bot.joy = 0.0001;
-  }
-
-  function ripple(x, y, key, max) {
-    const m = ripples.find(r => !r.visible) || ripples[0];
-    m.material.color.setHex(pal[key]); m.userData.key = key; m.position.set(wx(x), 0.03, wz(y)); m.userData.t = 0; m.userData.max = max || 3.2; m.visible = true; m.scale.setScalar(0.4);
-  }
-  function burst(x, y, key) {
-    if (reduced) return;
-    burstMat.color.setHex(pal[key]);
-    const p = bg.attributes.position;
-    for (let i = 0; i < BURST; i++) {
-      p.setXYZ(i, wx(x), 0.5, wz(y));
-      const a = Math.random() * Math.PI * 2, s = 0.7 + Math.random() * 1.5;
-      bvel[i].set(Math.cos(a) * s, 1.2 + Math.random() * 2, Math.sin(a) * s); blife[i] = 1;
-    }
-    p.needsUpdate = true;
-  }
-
-  /** Paint what the agent believes onto the floor. arr holds 0..1 per cell. */
+  /** Paint what the selected robot believes onto the floor. arr holds 0..1 per cell. */
   function setHeat(arr) {
     lastHeat = arr;
     if (!tiles) return;
@@ -235,32 +304,27 @@ export function createStage(host) {
     }
     tiles.instanceColor.needsUpdate = true;
   }
-  function takeKey() { if (keyObj) keyObj.userData.taken = true; if (doorObj) doorObj.userData.opening = true; }
-  function resetItems() {
-    if (keyObj) { keyObj.userData.taken = false; keyObj.userData.gone = 0; keyObj.visible = true; keyObj.scale.setScalar(1); }
-    if (doorObj) { doorObj.userData.opening = false; doorObj.userData.open = 0; doorObj.scale.set(1, 1, 1); doorObj.position.y = 0.33; doorObj.material.opacity = 0.55; doorObj.visible = true; }
-  }
+  /** The key stays where it is. The gate fades while the selected robot carries it. */
+  function setFocusKey(has) { focusHasKey = has; }
 
   /* ---------- appearance ---------- */
   function setAppearance(name) {
     palName = name === 'dark' ? 'dark' : 'light'; pal = PALETTES[palName];
     scene.background = new THREE.Color(pal.bg);
     hemi.intensity = pal.hemi; sun.intensity = pal.sun; scene.environmentIntensity = pal.env; renderer.toneMappingExposure = pal.exposure;
-    table.material.opacity = pal.shadow; botLight.intensity = palName === 'dark' ? 5 : 0;
+    table.material.opacity = pal.shadow;
     bodyMat.color.setHex(pal.body); faceMat.color.setHex(pal.face);
-    eyeMat.color.setHex(pal[MOODS[bot.mood] || 'accent']);
-    retint(baseTints); retint(levelTints);
-    underglow.material.opacity = underglow.userData.base * pal.glow;
+    retint(baseTints); retint(levelTints); bots.forEach(applyBotLook);
     if (tiles && lastHeat) setHeat(lastHeat);
   }
 
   /* ---------- camera and sizing ---------- */
-  const cam = { user: 0, userEl: 0, idle: 0, drag: false, lx: 0, ly: 0, r: 18 };
+  const cam = { user: 0, userEl: 0, idle: 0, drag: false, lx: 0, ly: 0, r: 24 };
   function fit() {
     if (!level) return;
     const availW = Math.max(120, w3 - insets.left - insets.right), availH = Math.max(120, h3 - insets.top - insets.bottom);
     const size = Math.max(level.W, level.H) / 9;
-    cam.r = Math.max(19.5 * h3 / availH, 22 * h3 / availW) * size;
+    cam.r = Math.max(19.5 * h3 / availH, (availW < availH ? 26 : 22) * h3 / availW) * size; // narrow screens need room for the rotating diagonal
   }
   function resize() {
     w3 = Math.max(60, host.clientWidth); h3 = Math.max(60, host.clientHeight);
@@ -283,47 +347,53 @@ export function createStage(host) {
   if (typeof ResizeObserver === 'function') new ResizeObserver(resize).observe(host); else window.addEventListener('resize', resize);
 
   /* ---------- frame ---------- */
+  function updateBot(b, dt) {
+    const s = b.s;
+    if (s.t < 1) {
+      s.t = Math.min(1, s.t + dt / s.dur); const e = ease(s.t);
+      if (s.kind === 'bump') { const p = Math.sin(Math.PI * s.t) * 0.2; s.x = s.fx + s.dx * p; s.z = s.fz + s.dz * p; }
+      else { s.x = s.fx + (s.tx - s.fx) * e; s.z = s.fz + (s.tz - s.fz) * e; }
+    }
+    s.yaw += angDiff(s.yaw, s.tyaw) * Math.min(1, dt * 14);
+    if (s.spawn > 0) { s.spawn += dt; s.scale = Math.min(1, ease(Math.min(1, s.spawn / 0.5))); if (s.spawn >= 0.5) { s.spawn = 0; s.scale = 1; } }
+    let yoff = 0.05 + Math.sin(time * 2.2 + b.slot) * 0.025, sc = s.scale, rotZ = 0, rotX = 0;
+    if (s.drop > 0) { s.drop += dt; const f = Math.min(1, s.drop / 0.7); yoff += (1 - ease(f)) * 2.6; if (f >= 1) { s.drop = 0; ripple(level.start.x, level.start.y, 'bot' + b.slot, 2.6); } }
+    if (s.fall > 0) { s.fall += dt; const f = Math.min(1, s.fall / 0.7); yoff -= f * 0.9; sc *= 1 - f * 0.9; rotZ = f * 1.2; }
+    if (s.joy > 0) { s.joy += dt; const f = Math.min(1, s.joy / 1.0); yoff += Math.sin(f * Math.PI) * 0.4; s.yaw += dt * 6 * (1 - f); if (f >= 1) s.joy = 0; }
+    if (s.shake > 0) { s.shake = Math.max(0, s.shake - dt * 3.2); rotZ += Math.sin(time * 60) * 0.12 * s.shake; }
+    if (s.t < 1 && s.kind === 'step') rotX = 0.1 * Math.sin(Math.PI * s.t);
+    const o = OFFSETS[b.slot];
+    b.root.position.set(s.x + o[0] * spread, 0, s.z + o[1] * spread);
+    b.inner.position.y = yoff; b.inner.rotation.set(rotX, s.yaw, rotZ); b.inner.scale.setScalar(Math.max(0.001, sc) * 1.15);
+    const hov = Math.max(0, yoff - 0.05);
+    b.blob.scale.setScalar((1 - Math.min(0.9, hov * 0.8)) * Math.max(0.05, sc)); b.blob.material.opacity = pal.shadow * 1.4 * (s.fall > 0 ? 0.2 : 1);
+    b.underglow.material.opacity = b.underglow.userData.base * pal.glow * (s.fall > 0 ? 0.3 : 1) * (0.85 + Math.sin(time * 2.2) * 0.15);
+    b.ring.visible = s.focused && bots.length > 1; b.ring.material.opacity = 0.55 + Math.sin(time * 3) * 0.25; b.ring.scale.setScalar(1 + Math.sin(time * 3) * 0.04);
+    if (s.moodT > 0) { s.moodT -= dt; if (s.moodT <= 0 && s.mood !== 'think') setMood(b, 'think'); }
+    s.blink -= dt; let ey = 1, ex = 1;
+    if (s.blink < 0) { ey = 0.12; if (s.blink < -0.12) s.blink = 2 + Math.random() * 3; }
+    if (s.mood === 'bad') ey = Math.min(ey, 0.55);
+    if (s.mood === 'happy') { ey = Math.min(ey, 0.4); ex = 1.25; }
+    b.eyes.forEach((e, i) => { e.scale.set(ex, ey, 1); e.rotation.z = s.mood === 'bad' ? (i ? -0.35 : 0.35) : 0; });
+  }
+
   function frame(now) {
     requestAnimationFrame(frame);
     const dt = Math.min(0.05, (now - last) / 1000); last = now; time += dt;
-    if (bot.t < 1) {
-      bot.t = Math.min(1, bot.t + dt / bot.dur); const e = ease(bot.t);
-      if (bot.kind === 'bump') { const p = Math.sin(Math.PI * bot.t) * 0.2; bot.x = bot.fx + bot.dx * p; bot.z = bot.fz + bot.dz * p; }
-      else { bot.x = bot.fx + (bot.tx - bot.fx) * e; bot.z = bot.fz + (bot.tz - bot.fz) * e; }
-    }
-    bot.yaw += angDiff(bot.yaw, bot.tyaw) * Math.min(1, dt * 14);
-    if (bot.spawn > 0) { bot.spawn += dt; bot.scale = Math.min(1, ease(Math.min(1, bot.spawn / 0.5))); if (bot.spawn >= 0.5) { bot.spawn = 0; bot.scale = 1; } }
-    let yoff = 0.05 + Math.sin(time * 2.2) * 0.025, sc = bot.scale, rotZ = 0, rotX = 0;
-    if (bot.fall > 0) { bot.fall += dt; const f = Math.min(1, bot.fall / 0.7); yoff -= f * 0.9; sc *= 1 - f * 0.9; rotZ = f * 1.2; }
-    if (bot.joy > 0) { bot.joy += dt; const f = Math.min(1, bot.joy / 1.0); yoff += Math.sin(f * Math.PI) * 0.4; bot.yaw += dt * 6 * (1 - f); if (f >= 1) bot.joy = 0; }
-    if (bot.shake > 0) { bot.shake = Math.max(0, bot.shake - dt * 3.2); rotZ += Math.sin(time * 60) * 0.12 * bot.shake; }
-    if (bot.t < 1 && bot.kind === 'step') rotX = 0.1 * Math.sin(Math.PI * bot.t);
-    botRoot.position.set(bot.x, 0, bot.z);
-    botInner.position.y = yoff; botInner.rotation.set(rotX, bot.yaw, rotZ); botInner.scale.setScalar(Math.max(0.001, sc) * 1.15);
-    const hov = Math.max(0, yoff - 0.05);
-    blob.scale.setScalar((1 - hov * 0.8) * Math.max(0.05, sc)); blob.material.opacity = pal.shadow * 1.4 * (bot.fall > 0 ? 0.2 : 1);
-    underglow.material.opacity = underglow.userData.base * pal.glow * (bot.fall > 0 ? 0.3 : 1) * (0.85 + Math.sin(time * 2.2) * 0.15);
-    if (bot.moodT > 0) { bot.moodT -= dt; if (bot.moodT <= 0 && bot.mood !== 'think') setMood('think'); }
-    // eyes: blink, squint when hurt, smile when happy
-    bot.blink -= dt; let ey = 1, ex = 1;
-    if (bot.blink < 0) { ey = 0.12; if (bot.blink < -0.12) bot.blink = 2 + Math.random() * 3; }
-    if (bot.mood === 'bad') { ey = Math.min(ey, 0.55); }
-    if (bot.mood === 'happy') { ey = Math.min(ey, 0.4); ex = 1.25; }
-    eyes.forEach((e, i) => { e.scale.set(ex, ey, 1); e.rotation.z = bot.mood === 'bad' ? (i ? -0.35 : 0.35) : 0; });
+    spread += ((bots.length > 1 ? 1 : 0) - spread) * Math.min(1, dt * 5);
+    bots.forEach(b => updateBot(b, dt));
     if (goalObj) {
       const u = goalObj.userData; u.gem.rotation.y = time * 1.1; u.gem.position.y = 0.8 + Math.sin(time * 1.6) * 0.06;
       u.r2.scale.setScalar(1 + Math.sin(time * 1.8) * 0.05); u.gs.material.opacity = u.gs.userData.base * pal.glow * (0.8 + Math.sin(time * 1.6) * 0.2);
     }
     pitGlows.forEach((g, i) => { g.material.opacity = g.userData.base * pal.glow * (0.8 + Math.sin(time * 1.4 + i * 1.7) * 0.25); });
     if (keyObj) {
-      const u = keyObj.userData;
-      if (u.taken) { u.gone = Math.min(1, u.gone + dt * 3); keyObj.scale.setScalar(Math.max(0.001, 1 - u.gone)); keyObj.position.y = 0.5 + u.gone * 0.6; if (u.gone >= 1) keyObj.visible = false; }
-      else { keyObj.rotation.y = time * 1.5; keyObj.position.y = 0.5 + Math.sin(time * 1.8) * 0.06; }
+      const u = keyObj.userData; u.dim += ((focusHasKey ? 1 : 0) - u.dim) * Math.min(1, dt * 6);
+      keyObj.rotation.y = time * 1.5; keyObj.position.y = 0.5 + Math.sin(time * 1.8) * 0.06; keyObj.scale.setScalar(1 - u.dim * 0.35); u.ks.material.opacity = u.ks.userData.base * (1 - u.dim * 0.7);
     }
-    if (doorObj && doorObj.userData.opening) {
-      const u = doorObj.userData; u.open = Math.min(1, u.open + dt * 1.6);
-      doorObj.scale.y = Math.max(0.001, 1 - u.open); doorObj.position.y = 0.33 * (1 - u.open); doorObj.material.opacity = 0.55 * (1 - u.open);
-      if (u.open >= 1) doorObj.visible = false;
+    if (doorObj) {
+      const u = doorObj.userData; u.open += ((focusHasKey ? 1 : 0) - u.open) * Math.min(1, dt * 5);
+      doorObj.material.opacity = 0.55 - u.open * 0.43; doorObj.scale.y = 1 - u.open * 0.55; doorObj.position.y = 0.33 * (1 - u.open * 0.55);
     }
     ripples.forEach(m => {
       if (!m.visible) return;
@@ -351,5 +421,5 @@ export function createStage(host) {
   resize();
   requestAnimationFrame(frame);
 
-  return { loadLevel, setHeat, trailClear, trailAdd, setMood, ripple, burst, takeKey, resetItems, placeBot, spawnBot, botMove, setAppearance, setInsets };
+  return { loadLevel, addBot, setHeat, setFocusKey, ripple, burst, setAppearance, setInsets };
 }
