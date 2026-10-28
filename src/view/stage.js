@@ -324,7 +324,7 @@ export function createStage(host) {
     if (!level) return;
     const availW = Math.max(120, w3 - insets.left - insets.right), availH = Math.max(120, h3 - insets.top - insets.bottom);
     const size = Math.max(level.W, level.H) / 9;
-    cam.r = Math.max(19.5 * h3 / availH, 22 * h3 / availW) * size;
+    cam.r = Math.max(19.5 * h3 / availH, (availW < availH ? 26 : 22) * h3 / availW) * size; // narrow screens need room for the rotating diagonal
   }
   function resize() {
     w3 = Math.max(60, host.clientWidth); h3 = Math.max(60, host.clientHeight);
