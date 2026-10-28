@@ -72,6 +72,16 @@
       <label class="row switch-row" for="autoToggle"><span class="k">Advance When Mastered</span><input type="checkbox" id="autoToggle" checked></label>
     </section>
 
+    <section class="group" id="editor" aria-labelledby="h-editor" hidden>
+      <header id="h-editor">Maze Editor</header>
+      <p class="note">Pick a tile, then click or drag across the grid to paint it. Start, beacon, key and door can each be placed once.</p>
+      <div class="tools" id="tools" role="radiogroup" aria-label="Tile"></div>
+      <div class="edit-grid" id="editGrid" role="group" aria-label="Maze, 9 by 9"></div>
+      <p class="edit-status" id="editStatus" role="status"></p>
+      <button class="btn primary wide" id="editApply" type="button">Train on This Maze</button>
+      <button class="btn wide" id="editReset" type="button">Reset to Starter Maze</button>
+    </section>
+
     <section class="group" aria-labelledby="h-robots">
       <header id="h-robots">Robots</header>
       <ul class="bots" id="botList" aria-label="Robots in the maze"></ul>

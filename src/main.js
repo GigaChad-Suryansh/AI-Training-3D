@@ -8,12 +8,17 @@ import { createStage } from './view/stage.js';
 import { initAppearance } from './ui/theme.js';
 import { drawChart, drawRace } from './ui/chart.js';
 import { initTokenDrag } from './ui/dragdrop.js';
+import { initEditor } from './ui/editor.js';
+import { loadCustom, saveCustom, validate } from './core/custom.js';
 
 const $ = (s, r) => (r || document).querySelector(s);
-const NUM_STATES = Math.max(...LEVELS.map(l => l.W * l.H)) * 2;
+const BUILTIN = LEVELS.length;
+let customRows = loadCustom();
+const levels = [...LEVELS, validate(customRows).level];
+const NUM_STATES = Math.max(...levels.map(l => l.W * l.H)) * 2;
 
 /** Shared state. Each robot keeps its own brain and record inside its Learner. */
-const S = { li: 0, L: null, paused: false, speed: 1, auto: true, heat: true, masteredAt: LEVELS.map(() => null), runs: loadRuns(), hidden: new Set() };
+const S = { li: 0, L: null, paused: false, speed: 1, auto: true, heat: true, masteredAt: levels.map(() => null), runs: loadRuns(), hidden: new Set() };
 const robots = []; // { learner, h }  h is the 3D handle
 let selected = null;
 
@@ -47,7 +52,7 @@ function caption(text, tone) { $('#caption').textContent = text; $('#captionBox'
 /* ---------- levels ---------- */
 function renderLevels() {
   const wrap = $('#levels'); wrap.textContent = '';
-  LEVELS.forEach((L, i) => {
+  levels.forEach((L, i) => {
     const b = document.createElement('button');
     b.type = 'button'; b.setAttribute('aria-pressed', i === S.li ? 'true' : 'false');
     b.setAttribute('aria-label', `Level ${L.id}, ${L.name}${S.masteredAt[i] ? ', mastered' : ''}`);
@@ -181,7 +186,8 @@ $('#addBot').addEventListener('click', userAddRobot);
 
 /* ---------- episode flow ---------- */
 function loadLevel(i) {
-  S.li = i; S.L = LEVELS[i];
+  S.li = i; S.L = levels[i];
+  $('#editor').hidden = i < BUILTIN;
   hideBanner(); view.loadLevel(S.L);
   $('#briefText').textContent = `${S.L.name}. ${S.L.brief}`;
   $('.rw[data-k="key"]').classList.toggle('off', !S.L.key);
@@ -192,7 +198,7 @@ function loadLevel(i) {
     renderBots(); renderStats(); renderRuns(); redraw();
   }
 }
-function resetBrain() { robots.forEach(r => r.learner.wipe()); S.masteredAt = LEVELS.map(() => null); loadLevel(S.li); }
+function resetBrain() { robots.forEach(r => r.learner.wipe()); S.masteredAt = levels.map(() => null); loadLevel(S.li); }
 
 function startEpisode(r, drop) {
   const L = S.L, ln = r.learner;
@@ -218,12 +224,13 @@ function afterAttempt(r, out) {
   const ln = r.learner;
   if (out.lostMastery) hideBanner();
   if (out.justMastered) {
-    const all = robots.every(x => x.learner.mastered), last = S.li === LEVELS.length - 1, multi = robots.length > 1;
+    const all = robots.every(x => x.learner.mastered), last = S.li === BUILTIN - 1, multi = robots.length > 1;
     if (multi && !all) caption(`${ln.name} mastered the level in ${ln.masteredNow} attempts. The others are still learning.`, 'think');
     if (all) {
       S.masteredAt[S.li] = sel().masteredNow; renderLevels();
       const detail = multi ? `${rankingText()} attempts.` : `Solved reliably after ${sel().masteredNow} attempts.`;
-      if (last) showBanner('All Four Levels Mastered', `${multi ? detail : `The last skill took ${sel().masteredNow} attempts.`} Change the rewards and watch them adapt.`, [{ label: 'Start Over', fn: resetBrain }]);
+      if (S.li >= BUILTIN) showBanner('Your Maze Mastered', `${detail} Edit the maze to make it harder.`, []);
+      else if (last) showBanner('All Four Levels Mastered', `${multi ? detail : `The last skill took ${sel().masteredNow} attempts.`} Change the rewards and watch them adapt.`, [{ label: 'Start Over', fn: resetBrain }]);
       else showBanner(`Level ${S.L.id} Mastered`, `${detail}${S.auto ? ' Moving on after a couple of victory laps.' : ''}`, [{ label: 'Next Level', fn: () => loadLevel(S.li + 1) }]);
     }
   }
@@ -256,7 +263,7 @@ function doStep(r) {
 
 /** Returns true when it switched levels, so the loop stops using stale robots. */
 function afterPause(r) {
-  if (S.auto && robots.every(x => x.learner.mastered) && sel().victory >= 2 && S.li < LEVELS.length - 1) { loadLevel(S.li + 1); return true; }
+  if (S.auto && robots.every(x => x.learner.mastered) && sel().victory >= 2 && S.li < BUILTIN - 1) { loadLevel(S.li + 1); return true; }
   startEpisode(r);
   return false;
 }
@@ -411,6 +418,19 @@ $('#saveRun').addEventListener('click', () => {
   const stored = saveRuns(S.runs);
   caption(stored ? `Saved ${run.name}. Reset the brain or change the rewards, then train again to compare.` : `Saved ${run.name} for this visit only. Browser storage is unavailable.`, 'think');
   renderRuns(); redraw();
+});
+
+/* ---------- maze editor ---------- */
+initEditor({
+  rows: customRows,
+  onApply: rows => {
+    const v = validate(rows); if (!v.ok) return;
+    customRows = rows; saveCustom(rows);
+    levels[BUILTIN] = v.level; S.masteredAt[BUILTIN] = null;
+    robots.forEach(r => r.learner.wipe());
+    loadLevel(BUILTIN);
+    caption('New maze loaded. The robots start fresh, so watch them explore it.', 'think');
+  }
 });
 
 /* ---------- go ---------- */

@@ -390,3 +390,26 @@ input[type="range"]::-moz-range-thumb { width: 22px; height: 22px; border-radius
 @media (prefers-reduced-motion: reduce) {
   * { transition: none !important; animation: none !important; }
 }
+
+/* ---------- maze editor ---------- */
+.tools { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0 10px; }
+.tool { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; border: 0; border-radius: 10px; background: var(--fill); color: var(--label); font: 500 0.6875rem/1 var(--rounded); cursor: pointer; }
+.tool:hover { background: var(--fill-hover); }
+.tool[aria-checked="true"] { outline: 2px solid var(--accent-fill); outline-offset: -2px; background: var(--fill-hover); }
+.tool .sw { width: 18px; height: 18px; border-radius: 6px; background: var(--fill-hover); display: block; }
+.sw.cw { background: var(--label-2); }
+.sw.cP { background: var(--warn-fill); }
+.sw.cK, .sw.cD { background: #f0a21a; }
+.sw.cS { background: var(--blue-fill); }
+.sw.cG { background: var(--accent-fill); }
+.edit-grid { display: grid; grid-template-columns: repeat(9, 1fr); gap: 3px; touch-action: none; user-select: none; margin-bottom: 8px; }
+.cell { aspect-ratio: 1; min-width: 0; padding: 0; border: 0; border-radius: 6px; background: var(--fill); color: #fff; font: 700 0.75rem/1 var(--rounded); cursor: crosshair; display: grid; place-items: center; }
+.cell[data-t="#"] { background: var(--label-2); }
+.cell[data-t="P"] { background: var(--warn-fill); }
+.cell[data-t="K"], .cell[data-t="D"] { background: #f0a21a; color: #2b2100; }
+.cell[data-t="S"] { background: var(--blue-fill); }
+.cell[data-t="G"] { background: var(--accent-fill); }
+.cell:focus-visible, .tool:focus-visible { outline: 2px solid var(--accent-fill); outline-offset: 2px; }
+.edit-status { margin: 0 0 8px; font-size: 0.8125rem; color: var(--label-2); }
+.edit-status[data-ok="0"] { color: var(--warn); }
+@media (max-width: 1000px) { .cell { min-height: 32px; } }
