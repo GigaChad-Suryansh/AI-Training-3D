@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>How the Robot Learns · AI Training 3D</title>
+  <meta name="description" content="A plain-language guide to how the robot in AI Training 3D teaches itself, with small experiments you can run.">
+  <script>try{var m=localStorage.getItem('ai-training-3d:appearance');if(m==='light'||m==='dark')document.documentElement.dataset.theme=m}catch(e){}</script>
+</head>
+<body>
+  <header class="top">
+    <a class="back" href="./index.html">&larr; Back to the lab</a>
+    <span class="top-title">How the robot learns</span>
+  </header>
+
+  <main>
+    <section class="hero">
+      <p class="eyebrow">A guide for curious people</p>
+      <h1>How does a robot teach itself?</h1>
+      <p class="lead">Nobody tells the robot where the beacon is. It tries things, gets a score for each move, and slowly works out what is worth doing. This page explains how, step by step, with small experiments you can run yourself. No math background needed.</p>
+      <nav class="toc" aria-label="On this page">
+        <a href="#idea">The idea</a><a href="#world">Its world</a><a href="#memory">Its memory</a><a href="#update">The learning step</a><a href="#lab">Try it</a><a href="#explore">Exploring</a><a href="#mastery">When it's done</a><a href="#more">Go deeper</a>
+      </nav>
+    </section>
+
+    <section id="idea">
+      <h2>1. The idea: learn from scores</h2>
+      <p>Think about the game of hot and cold. You search for a hidden object, and a friend says "warmer" or "colder". You never get told the answer, but the feedback adds up and you find it.</p>
+      <p>The robot works the same way. After every move it gets a number, called a <strong>reward</strong>. Good things give points and bad things take them away. Its only goal is to collect as many points as it can over a whole attempt. Learning like this, by trial, feedback and memory, is called <strong>reinforcement learning</strong>.</p>
+      <div class="loop" role="img" aria-label="A loop: the robot looks at where it is, picks a move, the world gives a reward, and the robot updates its memory.">
+        <div class="step"><b>1</b><span>Look</span><small>Where am I?</small></div>
+        <i aria-hidden="true">&rarr;</i>
+        <div class="step"><b>2</b><span>Move</span><small>Pick a direction</small></div>
+        <i aria-hidden="true">&rarr;</i>
+        <div class="step"><b>3</b><span>Score</span><small>Get a reward</small></div>
+        <i aria-hidden="true">&rarr;</i>
+        <div class="step"><b>4</b><span>Remember</span><small>Update the notes</small></div>
+      </div>
+      <p>That loop runs thousands of times. Early on the moves are guesses. Later they are informed.</p>
+    </section>
+
+    <section id="world">
+      <h2>2. Its world: places, moves and points</h2>
+      <p>To keep things simple the robot sees very little. It only knows <strong>which tile it is standing on</strong> (and, in the key level, whether it holds the key). It does not see walls, pits or the beacon from afar. Each turn it can choose one of four moves: up, right, down or left.</p>
+      <p>The scores come from the sliders in the lab. These are the defaults:</p>
+      <table class="scores">
+        <thead><tr><th>What happens</th><th>Points</th><th>Why</th></tr></thead>
+        <tbody>
+          <tr><td>Reaches the beacon</td><td class="pos">+10</td><td>The whole point of the game</td></tr>
+          <tr><td>Picks up the key</td><td class="pos">+3</td><td>A small thank-you for a useful step</td></tr>
+          <tr><td>Falls into a pit</td><td class="neg">&minus;10</td><td>Ends the attempt, so it is a big mistake</td></tr>
+          <tr><td>Bumps a wall or locked door</td><td class="neg">&minus;0.5</td><td>A small sting for a wasted move</td></tr>
+          <tr><td>Every step it takes</td><td class="neg">&minus;0.05</td><td>Makes shorter routes score higher</td></tr>
+        </tbody>
+      </table>
+      <p>Notice that the robot is never told "go right here". The scores describe what is good and bad, and it has to figure out the actions itself. That is why changing the sliders in the lab changes how the robot behaves.</p>
+    </section>
+
+    <section id="memory">
+      <h2>3. Its memory: a table of notes</h2>
+      <p>The robot's brain is a big table. There is one row for every tile it can stand on, and four numbers in each row, one for each move. Each number answers a simple question:</p>
+      <blockquote>"If I am on this tile and make this move, how many points do I expect to collect from now until the end?"</blockquote>
+      <p>This table is called a <strong>Q-table</strong> (Q stands for quality). When you turn on <em>Show What It Learned</em> in the lab, the floor glows brighter on tiles where the best move in the table has a high expected score.</p>
+      <p>At the start, every number is the same small, hopeful value. That is deliberate. Because nothing has been tried yet, every move looks equally promising, so the robot is curious about all of them. Once a move disappoints it, its number drops and the robot tries something else. This is a trick called <strong>optimistic starting values</strong>.</p>
+    </section>
+
+    <section id="update">
+      <h2>4. The learning step: nudge the note toward the truth</h2>
+      <p>After each move, the robot has just learned something. It then adjusts one number in its table. The recipe is:</p>
+      <div class="formula" aria-label="new note equals old note plus learning rate times the gap between what happened and what I expected">
+        <span class="t">new note</span><span class="o">=</span><span class="t">old note</span><span class="o">+</span><span class="t g">learning rate</span><span class="o">&times;</span><span class="t">(<em>what I just saw</em> &minus; <em>what I expected</em>)</span>
+      </div>
+      <p>"What I just saw" is the reward it received, plus the best it thinks it can do from the tile it lands on, shrunk a little because that future is less certain. That shrinking number is called the <strong>discount</strong>. It is set to 0.97 here, so a point one step away is worth almost as much as a point now, but a point ten steps away is worth a bit less.</p>
+      <p>The <strong>learning rate</strong> (0.2 here) decides how far the note moves. A big rate learns fast but jumps around. A small rate is steady but slow. With 0.2, each experience moves the note one fifth of the way toward the new evidence.</p>
+      <p>If you like a tiny worked example: the robot expects 1.0 from a tile, steps onto a pit and gets &minus;10. The gap is &minus;11. One fifth of that is &minus;2.2, so its note drops from 1.0 to &minus;1.2. One bad experience was enough to make it wary, and repeating it would make the note even lower.</p>
+
+      <div class="card calc" aria-labelledby="calc-h">
+        <h3 id="calc-h">Experiment: one learning step</h3>
+        <p class="hint">Change the numbers and watch the note move. The values start on the pit example above.</p>
+        <div class="calc-grid">
+          <label>What I expected<output id="oOld"></output><input id="iOld" type="range" min="-12" max="12" step="0.1" value="1"></label>
+          <label>Reward I just got<output id="oRew"></output><input id="iRew" type="range" min="-12" max="12" step="0.1" value="-10"></label>
+          <label>Best I expect from the next tile<output id="oNext"></output><input id="iNext" type="range" min="-12" max="12" step="0.1" value="0"></label>
+          <label>Learning rate<output id="oAlpha"></output><input id="iAlpha" type="range" min="0.05" max="1" step="0.05" value="0.2"></label>
+          <label>Discount<output id="oGamma"></output><input id="iGamma" type="range" min="0.5" max="1" step="0.01" value="0.97"></label>
+        </div>
+        <div class="calc-out" id="calcOut" role="status" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <section id="lab">
+      <h2>5. Watch it learn, on a tiny corridor</h2>
+      <p>Here is the real learning code from the lab, running on the smallest world possible: a corridor with the beacon at the far right. Each tile shows the best arrow in the robot's table and how good it thinks that tile is. Run a few attempts and watch the good news travel backwards from the beacon, one tile at a time.</p>
+      <div class="card corridor" aria-labelledby="cor-h">
+        <h3 id="cor-h">Experiment: teach a robot the corridor</h3>
+        <div class="cor-track" id="corTrack" role="img" aria-label="Corridor of seven tiles. Start on the left, beacon on the right."></div>
+        <div class="cor-actions">
+          <button type="button" class="btn" data-n="1">Run 1 attempt</button>
+          <button type="button" class="btn" data-n="5">Run 5</button>
+          <button type="button" class="btn" data-n="30">Run 30</button>
+          <button type="button" class="btn ghost" id="corForget">Forget everything</button>
+        </div>
+        <p class="cor-status" id="corStatus" role="status" aria-live="polite"></p>
+        <ul class="key-list">
+          <li><span class="sw s"></span> Start tile</li>
+          <li><span class="sw g"></span> Beacon</li>
+          <li><span class="arrow-ex">&rarr;</span> Best move it knows</li>
+          <li><span class="arrow-ex">?</span> It has no preference yet</li>
+        </ul>
+      </div>
+      <p>The first attempt is nearly random. The first time it reaches the beacon, only the tile right next to it learns that stepping onto the beacon is great. On the next attempt, the tile before that learns that stepping onto a great tile is good, and so on. The knowledge spreads backwards along the route. Wandering up or down in this corridor just bumps the wall, and you will see the robot learn to avoid that too.</p>
+    </section>
+
+    <section id="explore">
+      <h2>6. Trying new things versus using what it knows</h2>
+      <p>Imagine you always eat at the first restaurant you liked. You might never discover a better one. But if you only ever try new places, you never enjoy your favorite. Learners face the same tradeoff, called <strong>explore versus exploit</strong>.</p>
+      <p>The robot handles it with a dial called epsilon. On each move, with probability epsilon it ignores its notes and picks a random direction. Otherwise it takes the best move it knows. The dial starts at 20% and shrinks with every attempt, but never below 3%, so it stays a little curious forever.</p>
+      <div class="card" aria-labelledby="eps-h">
+        <h3 id="eps-h">Experiment: how curious is it after N attempts?</h3>
+        <label class="slider-row">Attempts so far<output id="oN"></output><input id="iN" type="range" min="0" max="150" step="1" value="0"></label>
+        <div class="eps-bar" aria-hidden="true"><i id="epsFill"></i></div>
+        <p id="epsText" role="status" aria-live="polite"></p>
+      </div>
+      <p>This is why, in the lab, early attempts look chaotic and later ones look confident, with the occasional surprising detour that keeps it honest. It also explains why a robot that has mastered a level can still wobble if you suddenly change the rewards: the lab bumps its curiosity back up so it can re-test its old habits.</p>
+    </section>
+
+    <section id="mastery">
+      <h2>7. Mistakes are the lesson, and how we know it is done</h2>
+      <p>Falling in a pit is not a bug. It is how the robot discovers that tile is dangerous. After one fall, that tile's note drops hard and the robot stays away. Hitting a wall teaches the same lesson in a gentler way.</p>
+      <p>The lab calls a level <strong>mastered</strong> when the robot reaches the beacon in at least 9 of its last 10 attempts, and its routes are no longer than one and a half times the shortest possible route. The shortest possible route is found separately by a plain search, which is the dashed line on the chart.</p>
+      <p>The key level is harder because the robot has to track a second fact: whether it holds the key. The same tile means something different before and after the key, so its table needs separate notes for each case. That is why this level takes longer.</p>
+      <p>When you add more robots, each one has its own table and starts from zero. They never share notes. The race you see is the same recipe run several times, with different luck.</p>
+    </section>
+
+    <section id="more">
+      <h2>8. What this does not do, and where to go next</h2>
+      <ul class="pad">
+        <li><strong>It cannot generalize.</strong> A table only knows the tiles it has visited. Give it a new maze and it starts over. Modern systems replace the table with a neural network, which can guess about places it has never seen.</li>
+        <li><strong>It works because the world is tiny.</strong> The table has a few hundred rows. A game like chess or a real street would need far more than a table can hold.</li>
+        <li><strong>It is not being clever.</strong> It is arithmetic repeated many times. The surprising part is how well simple arithmetic plus trial and error can work.</li>
+      </ul>
+      <h3>Good places to keep going</h3>
+      <ul class="pad">
+        <li><a href="https://natureofcode.com" target="_blank" rel="noopener">The Nature of Code</a> by Daniel Shiffman is a free, friendly book about simulating natural behavior in code. It is a great companion for the ideas behind this page, including neural networks and learning by evolution, where creatures improve by trial and selection instead of a table.</li>
+        <li><a href="http://incompleteideas.net/book/the-book-2nd.html" target="_blank" rel="noopener">Reinforcement Learning: An Introduction</a> by Sutton and Barto is the classic free textbook. Q-learning, the method used here, is one of its core ideas.</li>
+      </ul>
+      <h3>Words you may have seen</h3>
+      <dl class="gloss">
+        <dt>Reward</dt><dd>The score the world gives after a move.</dd>
+        <dt>Q-table</dt><dd>The robot's notebook of expected scores, one per tile and move.</dd>
+        <dt>Learning rate</dt><dd>How far each experience moves a note.</dd>
+        <dt>Discount</dt><dd>How much a future point is worth compared with one right now.</dd>
+        <dt>Epsilon</dt><dd>The chance of trying a random move instead of the best known one.</dd>
+        <dt>Episode</dt><dd>One full attempt, from the start tile to the end.</dd>
+      </dl>
+      <p class="cta"><a class="btn primary" href="./index.html">Go watch it learn</a></p>
+    </section>
+  </main>
+
+  <footer><p>Built with Q-learning in plain JavaScript. The corridor above runs the same code as the lab.</p></footer>
+  <script type="module" src="/src/learn.js"></script>
+</body>
+</html>
