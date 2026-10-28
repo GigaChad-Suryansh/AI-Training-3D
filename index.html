@@ -42,6 +42,11 @@
 
     <div class="banner glass" id="banner" role="status" hidden></div>
 
+    <div class="tray glass" id="tray">
+      <div class="token" id="token" role="button" tabindex="0" aria-label="Add a robot. Drag it onto the maze, or press Enter." title="Drag onto the maze to add a robot"><svg viewBox="0 0 28 28" aria-hidden="true"><rect x="2" y="5" width="24" height="18" rx="9" fill="currentColor" opacity=".92"/><circle cx="10" cy="14" r="2.4" fill="var(--token-eye)"/><circle cx="18" cy="14" r="2.4" fill="var(--token-eye)"/></svg></div>
+      <div class="tray-text"><strong>Add a Robot</strong><span><span id="botCount">1 of 4</span>. Drag it onto the maze.</span></div>
+    </div>
+
     <div class="dock" id="dock">
       <div class="caption glass" id="captionBox" data-tone="think"><i class="dot"></i><span id="caption">Starting up.</span></div>
       <div class="controls glass" role="group" aria-label="Playback">
@@ -67,6 +72,13 @@
       <label class="row switch-row" for="autoToggle"><span class="k">Advance When Mastered</span><input type="checkbox" id="autoToggle" checked></label>
     </section>
 
+    <section class="group" aria-labelledby="h-robots">
+      <header id="h-robots">Robots</header>
+      <ul class="bots" id="botList" aria-label="Robots in the maze"></ul>
+      <button class="btn wide" id="addBot" type="button">Add Robot</button>
+      <p class="note">Drag the robot token onto the maze, or press Add Robot. Each one learns on its own, so you can watch them race. Select a robot to see its map and progress.</p>
+    </section>
+
     <section class="group" aria-labelledby="h-progress">
       <header id="h-progress">Progress</header>
       <div class="row"><span class="k">Attempts</span><span class="v" id="stAttempts">0</span></div>
@@ -75,8 +87,8 @@
       <div class="row"><span class="k">Best Route</span><span class="v"><span id="stBest">&ndash;</span> <small>of <span id="stOpt"></span> steps</small></span></div>
       <div class="row"><span class="k">Mistakes, Last Attempt</span><span class="v" id="stMist">&ndash;</span></div>
       <svg id="chart" viewBox="0 0 320 150" role="img" aria-label="Steps per attempt"></svg>
-      <div class="legend"><span><i class="d"></i>Shortest route</span><span><i></i>Fell in a pit</span><span><i class="h"></i>Ran out of time</span></div>
-      <p class="note" id="chartNote" hidden>The teal line is this run. Curves show a 5-attempt average, and a dot marks the attempt where a run mastered the level.</p>
+      <div class="legend"><span><i class="d"></i>Shortest route</span><span class="raw-only"><i></i>Fell in a pit</span><span class="raw-only"><i class="h"></i>Ran out of time</span></div>
+      <p class="note" id="chartNote" hidden></p>
     </section>
 
     <section class="group" aria-labelledby="h-runs">
@@ -84,6 +96,7 @@
       <p class="note">Save a run, then reset the brain or change the rewards and train again. Saved runs for this level appear on the chart.</p>
       <button class="btn primary wide" id="saveRun" type="button">Save Current Run</button>
       <ul class="runs" id="runList" aria-label="Saved runs for this level"></ul>
+      <p class="note" id="runsHint" hidden>Saved runs are hidden on the chart while more than one robot is racing.</p>
     </section>
 
     <details class="group" open>

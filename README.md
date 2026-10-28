@@ -15,6 +15,10 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 - **Look around.** Drag the scene to orbit. Pause, change speed, skip ahead 25 attempts, or reset its brain.
 - **Light, Dark or System.** The toolbar pins an appearance. The default follows your system.
 
+- **Add more robots by drag and drop.** Drag the robot token from the tray onto the maze (or tap it, or press Add Robot) to drop in another learner, up to four. Each has its own brain, color and number, so you can watch them race on one chart. Select a robot to see its map and progress. Saved runs are for single-robot sessions.
+
+![Four robots racing on one level](docs/robots.png)
+
 ![Comparing three saved runs on one chart](docs/compare.png)
 
 ## How the learning works
@@ -46,7 +50,7 @@ src/
   view/    three.js scene and light/dark palettes
   ui/      chart and appearance control
   main.js  the loop that connects them
-tests/     every level is solvable, the agent masters all four, saved runs behave
+tests/     every level is solvable, the agent masters all four, saved runs behave, several robots learn independently
 ```
 
 The tests run the agent on 10 random seeds and fail if any seed does not reach mastery on every level.

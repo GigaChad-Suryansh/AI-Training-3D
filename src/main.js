@@ -1,25 +1,29 @@
 import './styles/main.css';
 import { EV, LEVELS } from './core/levels.js';
-import { Agent, Env, REWARDS, DEFAULT_REWARDS, epsilonFor, runEpisode } from './core/agent.js';
-import { isMastered, recentSuccess } from './core/mastery.js';
+import { REWARDS, DEFAULT_REWARDS } from './core/agent.js';
+import { recentSuccess } from './core/mastery.js';
+import { Learner, MAX_ROBOTS, freeSlot } from './core/learner.js';
 import { MAX_RUNS_PER_LEVEL, addRun, describeRewards, fastestRunId, loadRuns, packAttempts, presetName, removeRun, runsForLevel, saveRuns, summarize, unpackAttempts } from './core/runs.js';
 import { createStage } from './view/stage.js';
 import { initAppearance } from './ui/theme.js';
-import { drawChart } from './ui/chart.js';
+import { drawChart, drawRace } from './ui/chart.js';
+import { initTokenDrag } from './ui/dragdrop.js';
 
 const $ = (s, r) => (r || document).querySelector(s);
-const agent = new Agent(Math.max(...LEVELS.map(l => l.W * l.H)) * 2);
-const S = {
-  li: 0, L: null, env: null, attempts: [], tries: 0, paused: false, speed: 1, mastered: false, victory: 0,
-  masteredAt: LEVELS.map(() => null), auto: true, heat: true, phase: 'end', wait: 0, best: Infinity,
-  masteredNow: null, rewardsEdited: false, runs: loadRuns(), hidden: new Set()
-};
+const NUM_STATES = Math.max(...LEVELS.map(l => l.W * l.H)) * 2;
+
+/** Shared state. Each robot keeps its own brain and record inside its Learner. */
+const S = { li: 0, L: null, paused: false, speed: 1, auto: true, heat: true, masteredAt: LEVELS.map(() => null), runs: loadRuns(), hidden: new Set() };
+const robots = []; // { learner, h }  h is the 3D handle
+let selected = null;
 
 const stage = createStage($('#stageHost'));
 if (!stage) $('#noWebgl').hidden = false;
-const view = stage || new Proxy({}, { get: () => () => {} }); // keeps the app running without WebGL
+const noopHandle = new Proxy({}, { get: () => () => {} });
+const view = stage || new Proxy({}, { get: (_, k) => (k === 'addBot' ? () => noopHandle : () => {}) }); // keeps the app running without WebGL
 
 const fmt = v => (v > 0 ? '+' : v < 0 ? '−' : '') + String(Math.abs(Math.round(v * 100) / 100));
+const sel = () => selected.learner;
 
 /* ---------- appearance ---------- */
 initAppearance($('#appearance'), name => view.setAppearance(name));
@@ -55,35 +59,37 @@ function renderLevels() {
   });
 }
 
-/* ---------- stats ---------- */
-function phase() {
-  if (S.mastered) return ['mastered', 'Mastered'];
-  if (S.attempts.length < 4 || recentSuccess(S.attempts) < 0.4) return ['explore', 'Exploring'];
+/* ---------- stats for the selected robot ---------- */
+function phaseOf(ln) {
+  if (ln.mastered) return ['mastered', 'Mastered'];
+  if (ln.attempts.length < 4 || recentSuccess(ln.attempts) < 0.4) return ['explore', 'Exploring'];
   return ['improve', 'Improving'];
 }
 function renderStats() {
-  const n = S.attempts.length, r = recentSuccess(S.attempts), last = S.attempts[n - 1];
+  const ln = sel(), n = ln.attempts.length, r = recentSuccess(ln.attempts), last = ln.attempts[n - 1];
   $('#stAttempts').textContent = n;
   $('#stSuccess').textContent = Math.round(r * 100) + '%';
   $('#barFill').style.width = r * 100 + '%';
-  $('#stBest').textContent = isFinite(S.best) ? S.best : '–';
+  $('#stBest').textContent = isFinite(ln.best) ? ln.best : '–';
   $('#stOpt').textContent = S.L.optimal;
   $('#stMist').textContent = last ? last.mistakes : '–';
   $('#saveRun').disabled = n < 5;
-  const [key, label] = phase();
-  $('#status').dataset.phase = key; $('#phaseText').textContent = label;
+  const [key, label] = phaseOf(ln);
+  $('#status').dataset.phase = key;
+  $('#phaseText').textContent = robots.length > 1 ? `${ln.name}, ${label}` : label;
 }
 function renderLive() {
-  const m = S.env.bumps + (S.env.fell ? 1 : 0);
-  $('#liveText').textContent = `Attempt ${S.attempts.length + 1}, step ${S.env.t} of ${S.L.maxSteps}, ${m} ${m === 1 ? 'mistake' : 'mistakes'}`;
+  const ln = sel(), env = ln.env, m = env.bumps + (env.fell ? 1 : 0);
+  $('#liveText').textContent = `Attempt ${ln.attempts.length + 1}, step ${env.t} of ${S.L.maxSteps}, ${m} ${m === 1 ? 'mistake' : 'mistakes'}`;
 }
 function updateHeat() {
-  const L = S.L, arr = new Float32Array(L.W * L.H);
+  const ln = sel(), L = S.L, arr = new Float32Array(L.W * L.H);
   if (S.heat) {
-    for (let i = 0; i < arr.length; i++) arr[i] = Math.max(0, Math.min(1, (agent.maxQ(i * 2 + S.env.k) - 1) / 9));
+    for (let i = 0; i < arr.length; i++) arr[i] = Math.max(0, Math.min(1, (ln.agent.maxQ(i * 2 + ln.env.k) - 1) / 9));
     arr[L.goal.y * L.W + L.goal.x] = 1;
   }
   view.setHeat(arr);
+  view.setFocusKey(!!ln.env.k);
 }
 
 /* ---------- banner ---------- */
@@ -101,71 +107,158 @@ function showBanner(title, text, actions) {
 }
 const hideBanner = () => { $('#banner').hidden = true; };
 
+const TRASH = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V3.8h4v1.7M5.5 5.5l.7 10.2h7.6l.7-10.2M8.4 9v4.2M11.6 9v4.2"/></svg>';
+
+/* ---------- robots: list, tray, selection ---------- */
+function renderBots() {
+  const list = $('#botList'); list.textContent = '';
+  robots.forEach(r => {
+    const ln = r.learner, n = ln.attempts.length, li = document.createElement('li'); li.className = 'bot';
+    li.innerHTML = '<button type="button" class="bot-select"><span class="badge"></span><span class="bot-info"><b></b><small></small></span></button><button type="button" class="icon-btn del"></button>';
+    const pick = $('.bot-select', li);
+    $('.badge', li).className = 'badge b' + ln.slot; $('.badge', li).textContent = ln.slot + 1;
+    $('b', li).textContent = ln.name;
+    $('small', li).textContent = ln.mastered ? `Mastered in ${ln.masteredNow} attempts, best route ${ln.best}`
+      : n ? `${n} attempts, ${Math.round(recentSuccess(ln.attempts) * 100)}% success lately` : 'Just arrived, no experience yet';
+    pick.setAttribute('aria-pressed', r === selected ? 'true' : 'false');
+    pick.setAttribute('aria-label', `${ln.name}${r === selected ? ', selected' : ''}`);
+    pick.addEventListener('click', () => select(r));
+    const del = $('.del', li);
+    del.innerHTML = TRASH; del.setAttribute('aria-label', `Remove ${ln.name}`); del.title = 'Remove robot';
+    del.hidden = robots.length < 2;
+    del.addEventListener('click', () => removeRobot(r));
+    list.appendChild(li);
+  });
+  $('#addBot').disabled = robots.length >= MAX_ROBOTS;
+  $('#botCount').textContent = `${robots.length} of ${MAX_ROBOTS}`;
+  $('#token').setAttribute('aria-disabled', robots.length >= MAX_ROBOTS ? 'true' : 'false');
+}
+
+function select(r) {
+  selected = r;
+  robots.forEach(x => x.h.setFocused(x === r));
+  renderBots(); renderStats(); renderLive(); updateHeat(); renderRuns(); redraw();
+}
+
+function addRobot(drop) {
+  const slot = freeSlot(robots.map(r => r.learner));
+  if (slot < 0) return null;
+  const r = { learner: new Learner(S.L, NUM_STATES, slot), h: view.addBot(slot) };
+  robots.push(r); robots.sort((a, b) => a.learner.slot - b.learner.slot);
+  if (!selected) selected = r;
+  r.h.setFocused(r === selected);
+  startEpisode(r, drop);
+  renderBots(); renderStats(); renderRuns(); redraw();
+  return r;
+}
+
+function removeRobot(r) {
+  if (robots.length < 2) return;
+  const wasSelected = r === selected, name = r.learner.name;
+  r.h.remove(); robots.splice(robots.indexOf(r), 1);
+  if (wasSelected) select(robots[0]); else { robots.forEach(x => x.h.setFocused(x === selected)); renderBots(); renderRuns(); redraw(); }
+  caption(`${name} left the maze.`, 'think');
+}
+
+function userAddRobot() {
+  const r = addRobot(true);
+  if (r) caption(`${r.learner.name} dropped in at the start. It has no experience yet, so watch how fast it catches up.`, 'think');
+}
+
+initTokenDrag({
+  token: $('#token'), host: $('#stageHost'), scene: $('#scene'),
+  makeGhost: () => {
+    const g = document.createElement('div'); g.className = 'ghost';
+    g.innerHTML = $('#token').innerHTML; g.style.color = `var(--bot${freeSlot(robots.map(r => r.learner))})`;
+    return g;
+  },
+  canAdd: () => robots.length < MAX_ROBOTS,
+  onAdd: userAddRobot,
+  onRefuse: () => caption(`The maze already has ${MAX_ROBOTS} robots. Remove one to add another.`, 'bad'),
+  onMiss: () => caption('Drop the robot onto the maze to add it.', 'think')
+});
+$('#addBot').addEventListener('click', userAddRobot);
+
 /* ---------- episode flow ---------- */
 function loadLevel(i) {
-  S.li = i; S.L = LEVELS[i]; S.env = new Env(S.L);
-  S.attempts = []; S.tries = 0; S.mastered = false; S.victory = 0; S.best = Infinity; S.masteredNow = null; S.rewardsEdited = false;
+  S.li = i; S.L = LEVELS[i];
   hideBanner(); view.loadLevel(S.L);
   $('#briefText').textContent = `${S.L.name}. ${S.L.brief}`;
   $('.rw[data-k="key"]').classList.toggle('off', !S.L.key);
-  renderLevels(); renderStats(); renderRuns(); redraw();
-  startEpisode();
+  renderLevels();
+  if (!robots.length) addRobot(false);
+  else {
+    robots.forEach(r => { r.learner.resetForLevel(S.L); startEpisode(r); });
+    renderBots(); renderStats(); renderRuns(); redraw();
+  }
 }
-function resetBrain() { agent.wipe(); S.masteredAt = LEVELS.map(() => null); loadLevel(S.li); }
+function resetBrain() { robots.forEach(r => r.learner.wipe()); S.masteredAt = LEVELS.map(() => null); loadLevel(S.li); }
 
-function startEpisode() {
-  const L = S.L; S.env.reset();
-  view.resetItems(); view.trailClear(); view.trailAdd(L.start.x, L.start.y); view.placeBot(L.start.x, L.start.y); view.spawnBot();
-  S.phase = 'run'; S.wait = 0.5 / Math.sqrt(S.speed);
-  const n = S.attempts.length + 1;
-  if (S.mastered) caption(`Victory lap. It follows the best route it knows.`, 'think');
+function startEpisode(r, drop) {
+  const L = S.L, ln = r.learner;
+  ln.beginAttempt();
+  r.h.trailClear(); r.h.trailAdd(L.start.x, L.start.y); r.h.place(L.start.x, L.start.y);
+  if (drop) r.h.dropIn(); else r.h.spawn();
+  ln.wait = (drop ? 0.9 : 0.5) / Math.sqrt(S.speed) + ln.slot * 0.05;
+  if (r !== selected) return;
+  const n = ln.attempts.length + 1;
+  if (ln.mastered) caption('Victory lap. It follows the best route it knows.', 'think');
   else if (n === 1) caption('Attempt 1. It has no map yet, so every move is a guess.', 'think');
   else caption(`Attempt ${n}. Using what it learned so far.`, 'think');
   renderLive(); updateHeat(); renderStats();
 }
 
-function bookkeep(st) {
-  S.attempts.push(st); S.tries++;
-  if (st.ok && st.steps < S.best) S.best = st.steps;
-  if (S.mastered) {
-    if (st.ok) S.victory++; else { S.mastered = false; S.victory = 0; hideBanner(); }
-  } else if (isMastered(S.attempts, S.L.optimal)) {
-    S.mastered = true; S.victory = 0; S.masteredAt[S.li] = S.attempts.length; if (!S.masteredNow) S.masteredNow = S.attempts.length; renderLevels();
-    const n = S.attempts.length;
-    if (S.li === LEVELS.length - 1) {
-      showBanner('All Four Levels Mastered', `The last skill took ${n} attempts. Change the rewards and watch it adapt.`, [{ label: 'Start Over', fn: resetBrain }]);
-    } else {
-      showBanner(`Level ${S.L.id} Mastered`, `Solved reliably after ${n} attempts.${S.auto ? ' Moving on after a couple of victory laps.' : ''}`, [{ label: 'Next Level', fn: () => loadLevel(S.li + 1) }]);
+function rankingText() {
+  return robots.filter(x => x.learner.masteredNow).sort((a, b) => a.learner.masteredNow - b.learner.masteredNow)
+    .map(x => `${x.learner.name} in ${x.learner.masteredNow}`).join(', ');
+}
+
+/** Everything that happens after any robot finishes an attempt. */
+function afterAttempt(r, out) {
+  const ln = r.learner;
+  if (out.lostMastery) hideBanner();
+  if (out.justMastered) {
+    const all = robots.every(x => x.learner.mastered), last = S.li === LEVELS.length - 1, multi = robots.length > 1;
+    if (multi && !all) caption(`${ln.name} mastered the level in ${ln.masteredNow} attempts. The others are still learning.`, 'think');
+    if (all) {
+      S.masteredAt[S.li] = sel().masteredNow; renderLevels();
+      const detail = multi ? `${rankingText()} attempts.` : `Solved reliably after ${sel().masteredNow} attempts.`;
+      if (last) showBanner('All Four Levels Mastered', `${multi ? detail : `The last skill took ${sel().masteredNow} attempts.`} Change the rewards and watch them adapt.`, [{ label: 'Start Over', fn: resetBrain }]);
+      else showBanner(`Level ${S.L.id} Mastered`, `${detail}${S.auto ? ' Moving on after a couple of victory laps.' : ''}`, [{ label: 'Next Level', fn: () => loadLevel(S.li + 1) }]);
     }
   }
-  renderStats(); redraw();
-  $('#srStatus').textContent = `Attempt ${S.attempts.length} ${st.ok ? `reached the beacon in ${st.steps} steps` : 'did not reach the beacon'}.`;
+  renderBots(); if (r === selected) renderStats(); redraw();
+  if (r === selected) $('#srStatus').textContent = `Attempt ${ln.attempts.length} ${out.stat.ok ? `reached the beacon in ${out.stat.steps} steps` : 'did not reach the beacon'}.`;
 }
-const epsilon = () => (S.mastered ? 0 : epsilonFor(S.tries));
 
-function doStep() {
-  const env = S.env, a = agent.act(env.state(), epsilon());
-  const r = env.step(a); agent.learn(r.s0, a, r.s2, r.ev);
+function doStep(r) {
+  const ln = r.learner, env = ln.env, isSel = r === selected;
+  const res = ln.step(), a = res.a;
   const dur = Math.max(0.035, 0.24 / S.speed);
-  const kind = r.ev === EV.BUMP ? 'bump' : r.ev === EV.PIT ? 'fall' : r.ev === EV.GOAL ? 'goal' : 'step';
-  view.botMove(r.px, r.py, a, r.x, r.y, kind, kind === 'fall' ? 0.45 : kind === 'goal' ? 0.3 : dur);
-  S.wait = kind === 'fall' ? 0.4 : dur;
-  view.trailAdd(r.x, r.y);
-  if (r.ev === EV.BUMP) { view.setMood('bad'); view.ripple(r.px, r.py, 'warn', 1.6); caption(`Bumped into a wall or a locked door (${fmt(REWARDS.bump)}). It will try another way.`, 'bad'); }
-  else if (r.ev === EV.KEY) { view.takeKey(); view.setMood('key'); view.burst(r.x, r.y, 'amber'); view.ripple(r.x, r.y, 'amber', 2.6); caption(`Picked up the key (${fmt(REWARDS.key)}). The door is open now.`, 'key'); }
-  else if (r.ev === EV.PIT) { view.setMood('bad'); view.burst(r.x, r.y, 'warn'); view.ripple(r.x, r.y, 'warn', 2.4); caption(`Fell into a pit (${fmt(REWARDS.pit)}). It now rates that tile as dangerous.`, 'bad'); }
-  else if (r.ev === EV.GOAL) { view.setMood('happy'); view.burst(r.x, r.y, 'accent'); view.ripple(r.x, r.y, 'accent', 4.2); caption(`Reached the beacon (${fmt(REWARDS.goal)}) in ${env.t} steps. Shortest possible is ${S.L.optimal}.`, 'think'); }
-  else if (r.timeout) caption('Out of time. It will use what it saw and try again.', 'bad');
-  renderLive(); updateHeat();
-  if (r.done || r.timeout) {
-    bookkeep({ ok: r.ev === EV.GOAL, steps: env.t, mistakes: env.bumps + (env.fell ? 1 : 0), fell: env.fell, timeout: r.timeout });
-    S.phase = 'end';
-    S.wait = (r.ev === EV.GOAL ? 1.5 : r.ev === EV.PIT ? 1.0 : 0.8) / Math.pow(S.speed, 0.6);
+  const kind = res.ev === EV.BUMP ? 'bump' : res.ev === EV.PIT ? 'fall' : res.ev === EV.GOAL ? 'goal' : 'step';
+  r.h.move(res.px, res.py, a, res.x, res.y, kind, kind === 'fall' ? 0.45 : kind === 'goal' ? 0.3 : dur);
+  ln.wait = kind === 'fall' ? 0.4 : dur;
+  r.h.trailAdd(res.x, res.y);
+  const who = robots.length > 1 ? `${ln.name}: ` : '';
+  if (res.ev === EV.BUMP) { r.h.setMood('bad'); view.ripple(res.px, res.py, 'warn', 1.6); if (isSel) caption(`${who}Bumped into a wall or a locked door (${fmt(REWARDS.bump)}). It will try another way.`, 'bad'); }
+  else if (res.ev === EV.KEY) { r.h.setMood('key'); view.burst(res.x, res.y, 'amber'); view.ripple(res.x, res.y, 'amber', 2.6); if (isSel) caption(`${who}Picked up the key (${fmt(REWARDS.key)}). The door is open for it now.`, 'key'); }
+  else if (res.ev === EV.PIT) { r.h.setMood('bad'); view.burst(res.x, res.y, 'warn'); view.ripple(res.x, res.y, 'warn', 2.4); if (isSel) caption(`${who}Fell into a pit (${fmt(REWARDS.pit)}). It now rates that tile as dangerous.`, 'bad'); }
+  else if (res.ev === EV.GOAL) { r.h.setMood('happy'); view.burst(res.x, res.y, 'accent'); view.ripple(res.x, res.y, 'accent', 4.2); if (isSel) caption(`${who}Reached the beacon (${fmt(REWARDS.goal)}) in ${env.t} steps. Shortest possible is ${S.L.optimal}.`, 'think'); }
+  else if (res.timeout && isSel) caption(`${who}Out of time. It will use what it saw and try again.`, 'bad');
+  if (isSel) { renderLive(); updateHeat(); }
+  if (res.done || res.timeout) {
+    const out = ln.finish(res);
+    ln.phase = 'end';
+    ln.wait = (res.ev === EV.GOAL ? 1.5 : res.ev === EV.PIT ? 1.0 : 0.8) / Math.pow(S.speed, 0.6);
+    afterAttempt(r, out);
   }
 }
-function afterPause() {
-  if (S.mastered && S.auto && S.victory >= 2 && S.li < LEVELS.length - 1) { loadLevel(S.li + 1); return; }
-  startEpisode();
+
+/** Returns true when it switched levels, so the loop stops using stale robots. */
+function afterPause(r) {
+  if (S.auto && robots.every(x => x.learner.mastered) && sel().victory >= 2 && S.li < LEVELS.length - 1) { loadLevel(S.li + 1); return true; }
+  startEpisode(r);
+  return false;
 }
 
 let lastT = performance.now();
@@ -173,19 +266,26 @@ function loop(now) {
   requestAnimationFrame(loop);
   const dt = Math.min(0.1, (now - lastT) / 1000); lastT = now;
   if (S.paused) return;
-  S.wait -= dt;
-  for (let g = 0; S.wait <= 0 && g < 6; g++) { if (S.phase === 'run') doStep(); else afterPause(); }
+  for (const r of robots.slice()) {
+    const ln = r.learner; ln.wait -= dt;
+    for (let g = 0; ln.wait <= 0 && g < 6; g++) {
+      if (ln.phase === 'run') doStep(r); else if (afterPause(r)) return;
+    }
+  }
 }
 
 function skip(n) {
   const keep = S.paused; S.paused = true;
-  for (let i = 0; i < n; i++) {
-    const was = S.mastered, res = runEpisode(S.env, agent, epsilon());
-    bookkeep(res);
-    if (!was && S.mastered) break;
-  }
-  S.paused = keep; startEpisode();
-  caption('Skipped ahead. Its map has filled in, so watch how it moves now.', 'think');
+  robots.forEach(r => {
+    for (let i = 0; i < n; i++) {
+      const out = r.learner.playSilently();
+      afterAttempt(r, out);
+      if (out.justMastered) break;
+    }
+  });
+  S.paused = keep;
+  robots.forEach(r => startEpisode(r));
+  caption('Skipped ahead. Their maps have filled in, so watch how they move now.', 'think');
 }
 
 /* ---------- controls ---------- */
@@ -203,7 +303,7 @@ $('#autoToggle').addEventListener('change', e => { S.auto = e.target.checked; })
 document.addEventListener('keydown', e => {
   if (e.code !== 'Space') return;
   const t = e.target && e.target.tagName;
-  if (t === 'INPUT' || t === 'BUTTON' || t === 'TEXTAREA' || t === 'SUMMARY') return;
+  if (t === 'INPUT' || t === 'BUTTON' || t === 'TEXTAREA' || t === 'SUMMARY' || (e.target && e.target.id === 'token')) return;
   e.preventDefault(); setPaused(!S.paused);
 });
 
@@ -221,9 +321,8 @@ const PRESETS = {
   Reckless: { ...DEFAULT_REWARDS, pit: -1, bump: 0, step: -0.02 }
 };
 function rewardsChanged() {
-  S.tries = Math.min(S.tries, 25); // curiosity returns so it can re-test old habits
-  if (S.attempts.length) S.rewardsEdited = true;
-  if (S.mastered) { S.mastered = false; S.victory = 0; hideBanner(); renderStats(); }
+  robots.forEach(r => r.learner.rewardsChanged()); // curiosity returns so they can re-test old habits
+  hideBanner(); renderStats(); renderBots();
 }
 RW.forEach(r => {
   const row = document.createElement('div'); row.className = 'rw'; row.dataset.k = r.k;
@@ -245,18 +344,27 @@ Object.keys(PRESETS).forEach(name => {
   $('#presets').appendChild(b);
 });
 
-
-/* ---------- compare runs ---------- */
+/* ---------- chart and saved runs ---------- */
 const EYE = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M1.8 10S5 4.5 10 4.5 18.2 10 18.2 10 15 15.5 10 15.5 1.8 10 1.8 10z"/><circle cx="10" cy="10" r="2.4"/></svg>';
 const EYE_OFF = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2.5 2.5l15 15M8.2 4.7C8.8 4.6 9.4 4.5 10 4.5c5 0 8.2 5.5 8.2 5.5s-.8 1.4-2.2 2.8M5.3 6.3C3.1 7.8 1.8 10 1.8 10s3.2 5.5 8.2 5.5c1.3 0 2.5-.4 3.5-.9"/></svg>';
-const TRASH = '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3.5 5.5h13M8 5.5V3.8h4v1.7M5.5 5.5l.7 10.2h7.6l.7-10.2M8.4 9v4.2M11.6 9v4.2"/></svg>';
 
 const levelRuns = () => runsForLevel(S.runs, S.L.id);
 const visibleOverlays = () => levelRuns().filter(r => !S.hidden.has(r.id)).map(r => ({ slot: r.slot, name: r.name, attempts: unpackAttempts(r.attempts), masteredAt: r.masteredAt }));
+
 function redraw() {
-  const overlays = visibleOverlays();
-  drawChart($('#chart'), S.L, { attempts: S.attempts, masteredAt: S.masteredNow }, overlays);
-  $('#chartNote').hidden = overlays.length === 0;
+  const multi = robots.length > 1, note = $('#chartNote'), svg = $('#chart');
+  $('#runsHint').hidden = !multi;
+  if (multi) {
+    drawRace(svg, S.L, robots.map(r => ({ slot: r.learner.slot, name: r.learner.name, attempts: r.learner.attempts, masteredAt: r.learner.masteredNow })), sel().slot);
+    note.hidden = false;
+    note.textContent = 'Each robot has its own color and line style. Curves show a 5-attempt average, and a dot marks the attempt where a robot mastered the level.';
+  } else {
+    const overlays = visibleOverlays();
+    drawChart(svg, S.L, { attempts: sel().attempts, masteredAt: sel().masteredNow }, overlays);
+    note.hidden = overlays.length === 0;
+    note.textContent = 'The teal line is this run. Curves show a 5-attempt average, and a dot marks the attempt where a run mastered the level.';
+  }
+  document.querySelectorAll('.legend .raw-only').forEach(el => { el.hidden = multi || visibleOverlays().length > 0; });
 }
 
 function renderRuns() {
@@ -289,12 +397,13 @@ function renderRuns() {
 }
 
 $('#saveRun').addEventListener('click', () => {
-  const base = S.rewardsEdited ? 'Mixed rewards' : presetName(REWARDS, PRESETS);
+  const ln = sel();
+  const base = ln.rewardsEdited ? 'Mixed rewards' : presetName(REWARDS, PRESETS);
   const same = levelRuns().filter(r => r.name === base || r.name.startsWith(base + ' ')).length;
   const run = {
     id: (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()) + Math.random().toString(36).slice(2)),
     levelId: S.L.id, name: same ? `${base} ${same + 1}` : base, savedAt: Date.now(),
-    rewards: { ...REWARDS }, attempts: packAttempts(S.attempts.slice(0, 300)), masteredAt: S.masteredNow && S.masteredNow <= 300 ? S.masteredNow : null
+    rewards: { ...REWARDS }, attempts: packAttempts(ln.attempts.slice(0, 300)), masteredAt: ln.masteredNow && ln.masteredNow <= 300 ? ln.masteredNow : null
   };
   const res = addRun(S.runs, run);
   if (res.error) { caption(`This level already has ${MAX_RUNS_PER_LEVEL} saved runs. Delete one to save another.`, 'bad'); return; }
@@ -308,4 +417,4 @@ $('#saveRun').addEventListener('click', () => {
 loadLevel(0);
 measureInsets();
 requestAnimationFrame(loop);
-window.__lab = { S, agent, skip, loadLevel }; // handy in the console and in screenshots
+window.__lab = { S, robots, skip, loadLevel, addRobot }; // handy in the console and in screenshots
