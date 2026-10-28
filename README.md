@@ -19,6 +19,8 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 
 - **Build your own maze.** Level 5, Your Maze, has a 9 by 9 editor. Pick a tile (floor, wall, pit, key, door, start, beacon) and click or drag across the grid to paint it. The editor checks that the beacon can be reached and shows the shortest route before you train on it. Your maze is kept in your browser.
 
+- **A plain-language guide.** The `learn.html` page (linked from the lab) explains how the robot learns, with three small experiments: one learning step with sliders, a real corridor you can train, and the curiosity dial.
+
 ![Painting a custom maze](docs/editor.png)
 
 ![Four robots racing on one level](docs/robots.png)
