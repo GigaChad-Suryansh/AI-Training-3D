@@ -17,6 +17,10 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 
 - **Add more robots by drag and drop.** Drag the robot token from the tray onto the maze (or tap it, or press Add Robot) to drop in another learner, up to four. Each has its own brain, color and number, so you can watch them race on one chart. Select a robot to see its map and progress. Saved runs are for single-robot sessions.
 
+- **Build your own maze.** Level 5, Your Maze, has a 9 by 9 editor. Pick a tile (floor, wall, pit, key, door, start, beacon) and click or drag across the grid to paint it. The editor checks that the beacon can be reached and shows the shortest route before you train on it. Your maze is kept in your browser.
+
+![Painting a custom maze](docs/editor.png)
+
 ![Four robots racing on one level](docs/robots.png)
 
 ![Comparing three saved runs on one chart](docs/compare.png)
@@ -46,7 +50,7 @@ npm run build    # static site in dist/
 
 ```
 src/
-  core/    levels, environment, Q-learning agent, mastery rule, saved runs (no DOM)
+  core/    levels, custom maze rules, environment, Q-learning agent, mastery rule, saved runs (no DOM)
   view/    three.js scene and light/dark palettes
   ui/      chart and appearance control
   main.js  the loop that connects them
