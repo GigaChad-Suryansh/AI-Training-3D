@@ -64,4 +64,15 @@ export function saveCustom(rows, storage = globalThis.localStorage) {
   try { storage.setItem(STORE_KEY, JSON.stringify(rows)); return true; } catch (e) { return false; }
 }
 
+/** A maze as one short, URL-safe string: 81 characters, walls written as W. */
+export function encodeMaze(rows) { return rows.join('').replace(/#/g, 'W'); }
+
+/** Reverse of encodeMaze. Returns playable rows, or null for anything else. */
+export function decodeMaze(text) {
+  if (typeof text !== 'string' || text.length !== SIZE * SIZE || !/^[.WPKDSG]+$/.test(text)) return null;
+  const flat = text.replace(/W/g, '#'), rows = [];
+  for (let y = 0; y < SIZE; y++) rows.push(flat.slice(y * SIZE, (y + 1) * SIZE));
+  return validate(rows).ok ? rows : null;
+}
+
 export { solve };

@@ -1,11 +1,11 @@
-import { SIZE, paint, validate, starterRows } from '../core/custom.js';
+import { SIZE, paint, validate, starterRows, encodeMaze } from '../core/custom.js';
 
 const NAMES = { '.': 'floor', '#': 'wall', P: 'pit', K: 'key', D: 'door', S: 'start', G: 'beacon' };
 const LABELS = { '.': 'Floor', '#': 'Wall', P: 'Pit', K: 'Key', D: 'Door', S: 'Start', G: 'Beacon' };
 const GLYPH = { '.': '', '#': '', P: '', K: 'K', D: 'D', S: 'S', G: '' };
 
 /** Paint-on-a-grid maze editor. Works with mouse, touch, pen and keyboard (Tab to a tile, Enter or Space paints). */
-export function initEditor({ rows, onApply }) {
+export function initEditor({ rows, onApply, onShare }) {
   const tools = document.getElementById('tools'), grid = document.getElementById('editGrid');
   const status = document.getElementById('editStatus'), apply = document.getElementById('editApply');
   let cur = rows, tool = '#', applied = rows.join(''), painting = false, last = '';
@@ -67,5 +67,8 @@ export function initEditor({ rows, onApply }) {
   apply.addEventListener('click', () => { if (!validate(cur).ok) return; applied = cur.join(''); render(); onApply(cur); });
   document.getElementById('editReset').addEventListener('click', () => { cur = starterRows(); render(); });
 
+  document.getElementById('editShare').addEventListener('click', () => { if (validate(cur).ok) onShare(encodeMaze(cur)); });
+
   paintTools(); render();
+  return { setRows(next) { cur = next; applied = next.join(''); render(); } };
 }
