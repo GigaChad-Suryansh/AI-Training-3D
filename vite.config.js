@@ -7,6 +7,6 @@ export default defineConfig({
   base: './',
   build: {
     chunkSizeWarningLimit: 900,
-    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), learn: resolve(import.meta.dirname, 'learn.html'), gallery: resolve(import.meta.dirname, 'gallery.html') } }
+    rollupOptions: { input: { main: resolve(import.meta.dirname, 'index.html'), learn: resolve(import.meta.dirname, 'learn.html'), gallery: resolve(import.meta.dirname, 'gallery.html'), hub: resolve(import.meta.dirname, 'hub.html') } }
   }
 });
