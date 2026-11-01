@@ -21,6 +21,8 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 
 - **A plain-language guide.** The `learn.html` page (linked from the lab) explains how the robot learns, with three small experiments: one learning step with sliders, a real corridor you can train, and the curiosity dial.
 
+- **Save and load a trained robot.** Export Brain downloads the robot's learned values, the maze and the rewards as a small JSON file. Import Brain loads it back, so you can send a trained robot to a friend. See [ROADMAP.md](ROADMAP.md) for where this is going.
+
 ![Painting a custom maze](docs/editor.png)
 
 ![Four robots racing on one level](docs/robots.png)
@@ -65,7 +67,7 @@ The tests run the agent on 10 random seeds and fail if any seed does not reach m
 
 - Move to a small neural network (DQN) with TensorFlow.js
 - Moving obstacles and a prompt-to-maze generator
-- Share a level and its rewards through a link
+- Everything in [ROADMAP.md](ROADMAP.md)
 
 ## Built with
 

@@ -1,6 +1,7 @@
 import './styles/main.css';
 import { EV, LEVELS } from './core/levels.js';
-import { REWARDS, DEFAULT_REWARDS } from './core/agent.js';
+import { REWARDS, DEFAULT_REWARDS, HP } from './core/agent.js';
+import { exportAgent, parseAgent } from './core/portable.js';
 import { recentSuccess } from './core/mastery.js';
 import { Learner, MAX_ROBOTS, freeSlot } from './core/learner.js';
 import { MAX_RUNS_PER_LEVEL, addRun, describeRewards, fastestRunId, loadRuns, packAttempts, presetName, removeRun, runsForLevel, saveRuns, summarize, unpackAttempts } from './core/runs.js';
@@ -437,6 +438,35 @@ const editor = initEditor({
     loadLevel(BUILTIN);
     caption('New maze loaded. The robots start fresh, so watch them explore it.', 'think');
   }
+});
+
+/* ---------- agent files ---------- */
+const rowsOf = L => Array.from({ length: L.H }, (_, y) => L.grid.slice(y * L.W, (y + 1) * L.W).join(''));
+
+$('#exportBot').addEventListener('click', () => {
+  const file = exportAgent({ learner: sel(), rows: rowsOf(S.L), rewards: REWARDS, hp: HP, levelName: S.L.name });
+  const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = `${sel().name.toLowerCase().replace(/\s+/g, '-')}-${S.L.name.toLowerCase().replace(/\s+/g, '-')}.agent.json`;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  caption(`Saved ${sel().name}'s brain as a file. Import it later, or send it to a friend.`, 'think');
+});
+$('#importBot').addEventListener('click', () => $('#importFile').click());
+$('#importFile').addEventListener('change', async e => {
+  const f = e.target.files[0]; e.target.value = '';
+  if (!f) return;
+  let parsed;
+  try { parsed = parseAgent(JSON.parse(await f.text())); } catch (err) { parsed = { ok: false, error: 'That file could not be read as JSON.' }; }
+  if (!parsed.ok) { caption(parsed.error, 'bad'); return; }
+  const rows = parsed.file.environment.rows;
+  let idx = levels.findIndex(L => rowsOf(L).join('') === rows.join(''));
+  if (idx < 0) { customRows = rows; saveCustom(rows); levels[BUILTIN] = parsed.level; editor.setRows(rows); idx = BUILTIN; }
+  if (parsed.file.q.length !== sel().agent.Q.length) { caption('This brain was made for a different size of world.', 'bad'); return; }
+  const rw = parsed.file.environment.rewards;
+  RW.forEach(r => { REWARDS[r.k] = rw[r.k]; r.inp.value = rw[r.k]; r.paint(); });
+  loadLevel(idx);
+  sel().agent.Q.set(parsed.file.q);
+  sel().tries = 100; // it already knows the world, so little random exploring
+  caption(`Loaded ${parsed.file.card.name}'s brain from ${parsed.file.card.attempts} attempts. Watch how it does.`, 'think');
 });
 
 /* ---------- go ---------- */

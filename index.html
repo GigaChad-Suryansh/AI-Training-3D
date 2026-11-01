@@ -89,6 +89,11 @@
       <header id="h-robots">Robots</header>
       <ul class="bots" id="botList" aria-label="Robots in the maze"></ul>
       <button class="btn wide" id="addBot" type="button">Add Robot</button>
+      <div class="split">
+        <button class="btn" id="exportBot" type="button">Export Brain</button>
+        <button class="btn" id="importBot" type="button">Import Brain</button>
+      </div>
+      <input type="file" id="importFile" accept="application/json,.json" hidden>
       <p class="note">Drag the robot token onto the maze, or press Add Robot. Each one learns on its own, so you can watch them race. Select a robot to see its map and progress.</p>
     </section>
 
