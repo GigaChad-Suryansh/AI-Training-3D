@@ -38,12 +38,12 @@ Done when: someone can train a robot, send the file to a friend, and the friend 
 
 Goal: a public place to publish and discover. This is the first step that needs a server.
 
-- [ ] Backend and accounts (a hosted database with login, to avoid running servers early)
-- [ ] Publish an environment or an agent with a title, description and preview image
-- [ ] Browse, search, tags, likes and "remix this" (fork an environment into the editor)
+- [x] Backend and accounts: built against a hosted database (Supabase) with email sign-in; works locally with no setup. Needs your own project to go public, see [backend/README.md](backend/README.md)
+- [x] Publish an environment or an agent with a title and description (preview is drawn from the maze)
+- [x] Browse, search, likes and "remix this" (opens a maze in the editor). Tags still to do
 - [ ] Profile pages that double as a portfolio of what a person has made
 - [ ] Leaderboard per environment (fewest attempts to master, shortest route)
-- [ ] Moderation basics: report button, rate limits, size limits on uploads
+- [~] Moderation basics: size limits, validation and a 10-per-hour publish limit are in. A report button is still to do
 
 Done when: a stranger can find a world, train on it, publish their agent, and appear on a leaderboard.
 

@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="color-scheme" content="light dark">
+  <title>Hub · AI Training 3D</title>
+  <meta name="description" content="Share mazes and trained robots, and open other people's with one click.">
+  <script>try{var m=localStorage.getItem('ai-training-3d:appearance');if(m==='light'||m==='dark')document.documentElement.dataset.theme=m}catch(e){}</script>
+</head>
+<body>
+  <header class="top">
+    <a class="back" href="./index.html">&larr; Back to the lab</a>
+    <span class="top-title">Hub</span>
+  </header>
+  <main>
+    <section class="hero">
+      <p class="eyebrow">Share and discover</p>
+      <h1>The hub</h1>
+      <p class="lead">Publish a maze or a trained robot, and open what other people made. Every file is checked before it is stored or opened.</p>
+      <p class="mode" id="mode" role="status"></p>
+    </section>
+
+    <section class="card" id="authBox" hidden>
+      <h3>Sign in to publish and like</h3>
+      <form id="authForm" class="inline-form">
+        <label class="sr" for="email">Email</label>
+        <input id="email" type="email" required autocomplete="email" placeholder="you@example.com">
+        <button class="btn primary" type="submit">Email Me a Link</button>
+      </form>
+      <p class="hint" id="authMsg" role="status"></p>
+    </section>
+    <p class="who" id="who" hidden></p>
+
+    <section class="card" aria-labelledby="pub-h">
+      <h3 id="pub-h">Publish</h3>
+      <form id="pubForm" class="pub">
+        <div class="two">
+          <label>What is it<select id="pKind"><option value="environment">A maze</option><option value="agent">A trained robot</option></select></label>
+          <label>Title<input id="pTitle" maxlength="60" required placeholder="A name people will recognise"></label>
+        </div>
+        <label>Description <small>optional</small><textarea id="pDesc" maxlength="400" rows="2" placeholder="What is interesting about it?"></textarea></label>
+        <label>File <small>made with Download Maze File or Export Brain in the lab</small><input id="pFile" type="file" accept="application/json,.json" required></label>
+        <div class="row-actions">
+          <button class="btn primary" type="submit">Publish</button>
+          <button class="btn ghost" type="button" id="pCurrent">Use My Maze From the Lab</button>
+        </div>
+        <p class="hint" id="pubMsg" role="status"></p>
+      </form>
+    </section>
+
+    <section aria-labelledby="browse-h">
+      <h2 id="browse-h">Browse</h2>
+      <div class="filters">
+        <label class="sr" for="fQ">Search</label>
+        <input id="fQ" type="search" placeholder="Search by title or author">
+        <div class="seg" id="fKind" role="group" aria-label="Kind">
+          <button type="button" data-k="all" aria-pressed="true">All</button>
+          <button type="button" data-k="environment" aria-pressed="false">Mazes</button>
+          <button type="button" data-k="agent" aria-pressed="false">Robots</button>
+        </div>
+        <div class="seg" id="fSort" role="group" aria-label="Sort">
+          <button type="button" data-s="new" aria-pressed="true">Newest</button>
+          <button type="button" data-s="popular" aria-pressed="false">Popular</button>
+        </div>
+      </div>
+      <ul class="gallery" id="items"></ul>
+      <p class="empty" id="empty" hidden>Nothing here yet. Publish the first one above.</p>
+    </section>
+  </main>
+  <footer><p>Files are plain JSON in an <a href="https://github.com/GigaChad-Suryansh/AI-Training-3D/blob/main/docs/SPEC.md">open format</a>.</p></footer>
+  <script type="module" src="/src/hub.js"></script>
+</body>
+</html>

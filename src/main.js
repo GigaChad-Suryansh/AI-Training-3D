@@ -467,30 +467,46 @@ function openWorld(rows, level, rewards) {
   loadLevel(idx);
 }
 
+/** Load a parsed agent or maze file. Returns true when it was accepted. */
+function importJson(json) {
+  if (json && json.format === 'ai-training-3d/environment') {
+    const w = parseEnvironment(json);
+    if (!w.ok) { caption(w.error, 'bad'); return false; }
+    openWorld(w.file.environment.rows, w.level, w.file.environment.rewards);
+    caption('Loaded the maze from the file. The robots start fresh on it.', 'think');
+    return true;
+  }
+  const parsed = parseAgent(json);
+  if (!parsed.ok) { caption(parsed.error, 'bad'); return false; }
+  if (parsed.file.q.length !== sel().agent.Q.length) { caption('This brain was made for a different size of world.', 'bad'); return false; }
+  openWorld(parsed.file.environment.rows, parsed.level, parsed.file.environment.rewards);
+  sel().agent.Q.set(parsed.file.q);
+  sel().tries = 100; // it already knows the world, so little random exploring
+  caption(`Loaded ${parsed.file.card.name}'s brain from ${parsed.file.card.attempts} attempts. Watch how it does.`, 'think');
+  return true;
+}
 $('#importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
   let json;
   try { json = JSON.parse(await f.text()); } catch (err) { caption('That file could not be read as JSON.', 'bad'); return; }
-  if (json && json.format === 'ai-training-3d/environment') {
-    const w = parseEnvironment(json);
-    if (!w.ok) { caption(w.error, 'bad'); return; }
-    openWorld(w.file.environment.rows, w.level, w.file.environment.rewards);
-    caption('Loaded the maze from the file. The robots start fresh on it.', 'think');
-    return;
-  }
-  const parsed = parseAgent(json);
-  if (!parsed.ok) { caption(parsed.error, 'bad'); return; }
-  if (parsed.file.q.length !== sel().agent.Q.length) { caption('This brain was made for a different size of world.', 'bad'); return; }
-  openWorld(parsed.file.environment.rows, parsed.level, parsed.file.environment.rewards);
-  sel().agent.Q.set(parsed.file.q);
-  sel().tries = 100; // it already knows the world, so little random exploring
-  caption(`Loaded ${parsed.file.card.name}'s brain from ${parsed.file.card.attempts} attempts. Watch how it does.`, 'think');
+  importJson(json);
 });
+
+/** The hub hands a file over through storage when you press Open there. */
+function takePendingImport() {
+  try {
+    const raw = localStorage.getItem('ai-training-3d:pending-import');
+    if (!raw) return;
+    localStorage.removeItem('ai-training-3d:pending-import');
+    importJson(JSON.parse(raw));
+  } catch (e) { /* nothing to import */ }
+}
 
 /* ---------- go ---------- */
 loadLevel(sharedRows ? BUILTIN : 0);
 if (sharedRows) { saveCustom(sharedRows); caption('Opened a shared maze. Press Skip Ahead or just watch the robot learn it.', 'think'); }
 measureInsets();
+takePendingImport();
 requestAnimationFrame(loop);
 window.__lab = { S, robots, skip, loadLevel, addRobot }; // handy in the console and in screenshots

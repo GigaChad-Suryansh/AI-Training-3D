@@ -23,6 +23,8 @@ Watch a small 3D robot learn from its mistakes. It starts with no map, bumps int
 
 - **Save and load a trained robot.** Export Brain downloads the robot's learned values, the maze and the rewards as a small JSON file. Import Brain loads it back, so you can send a trained robot to a friend. The formats are written up in [docs/SPEC.md](docs/SPEC.md). The Gallery page offers starter worlds, and Download Maze File saves just a maze. See [ROADMAP.md](ROADMAP.md) for where this is going.
 
+- **A hub to share and discover.** The Hub page lets you publish a maze or a trained robot, search, like, and open other people's work in the lab. It runs locally with no setup and can be made public with a free Supabase project (see [backend/README.md](backend/README.md)). Every file is validated before it is stored or opened.
+
 ![Painting a custom maze](docs/editor.png)
 
 ![Four robots racing on one level](docs/robots.png)
