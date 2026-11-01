@@ -1,7 +1,7 @@
 import './styles/main.css';
 import { EV, LEVELS } from './core/levels.js';
 import { REWARDS, DEFAULT_REWARDS, HP } from './core/agent.js';
-import { exportAgent, parseAgent } from './core/portable.js';
+import { exportAgent, parseAgent, exportEnvironment, parseEnvironment } from './core/portable.js';
 import { recentSuccess } from './core/mastery.js';
 import { Learner, MAX_ROBOTS, freeSlot } from './core/learner.js';
 import { MAX_RUNS_PER_LEVEL, addRun, describeRewards, fastestRunId, loadRuns, packAttempts, presetName, removeRun, runsForLevel, saveRuns, summarize, unpackAttempts } from './core/runs.js';
@@ -445,25 +445,44 @@ const rowsOf = L => Array.from({ length: L.H }, (_, y) => L.grid.slice(y * L.W, 
 
 $('#exportBot').addEventListener('click', () => {
   const file = exportAgent({ learner: sel(), rows: rowsOf(S.L), rewards: REWARDS, hp: HP, levelName: S.L.name });
-  const url = URL.createObjectURL(new Blob([JSON.stringify(file)], { type: 'application/json' }));
-  const a = document.createElement('a'); a.href = url; a.download = `${sel().name.toLowerCase().replace(/\s+/g, '-')}-${S.L.name.toLowerCase().replace(/\s+/g, '-')}.agent.json`;
-  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+  download(file, `${sel().name.toLowerCase().replace(/\s+/g, '-')}-${S.L.name.toLowerCase().replace(/\s+/g, '-')}.agent.json`);
   caption(`Saved ${sel().name}'s brain as a file. Import it later, or send it to a friend.`, 'think');
 });
 $('#importBot').addEventListener('click', () => $('#importFile').click());
+function download(obj, name) {
+  const url = URL.createObjectURL(new Blob([JSON.stringify(obj)], { type: 'application/json' }));
+  const a = document.createElement('a'); a.href = url; a.download = name;
+  document.body.appendChild(a); a.click(); a.remove(); setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+$('#editExport').addEventListener('click', () => {
+  download(exportEnvironment({ rows: customRows, rewards: REWARDS, name: 'Your Maze' }), 'my-maze.maze.json');
+  caption('Saved your maze as a file. Anyone can open it with Import File.', 'think');
+});
+
+/** Make a world current: open it if it is built in, otherwise put it in Your Maze. */
+function openWorld(rows, level, rewards) {
+  let idx = levels.findIndex(L => rowsOf(L).join('') === rows.join(''));
+  if (idx < 0) { customRows = rows; saveCustom(rows); levels[BUILTIN] = level; editor.setRows(rows); idx = BUILTIN; }
+  RW.forEach(r => { REWARDS[r.k] = rewards[r.k]; r.inp.value = rewards[r.k]; r.paint(); });
+  loadLevel(idx);
+}
+
 $('#importFile').addEventListener('change', async e => {
   const f = e.target.files[0]; e.target.value = '';
   if (!f) return;
-  let parsed;
-  try { parsed = parseAgent(JSON.parse(await f.text())); } catch (err) { parsed = { ok: false, error: 'That file could not be read as JSON.' }; }
+  let json;
+  try { json = JSON.parse(await f.text()); } catch (err) { caption('That file could not be read as JSON.', 'bad'); return; }
+  if (json && json.format === 'ai-training-3d/environment') {
+    const w = parseEnvironment(json);
+    if (!w.ok) { caption(w.error, 'bad'); return; }
+    openWorld(w.file.environment.rows, w.level, w.file.environment.rewards);
+    caption('Loaded the maze from the file. The robots start fresh on it.', 'think');
+    return;
+  }
+  const parsed = parseAgent(json);
   if (!parsed.ok) { caption(parsed.error, 'bad'); return; }
-  const rows = parsed.file.environment.rows;
-  let idx = levels.findIndex(L => rowsOf(L).join('') === rows.join(''));
-  if (idx < 0) { customRows = rows; saveCustom(rows); levels[BUILTIN] = parsed.level; editor.setRows(rows); idx = BUILTIN; }
   if (parsed.file.q.length !== sel().agent.Q.length) { caption('This brain was made for a different size of world.', 'bad'); return; }
-  const rw = parsed.file.environment.rewards;
-  RW.forEach(r => { REWARDS[r.k] = rw[r.k]; r.inp.value = rw[r.k]; r.paint(); });
-  loadLevel(idx);
+  openWorld(parsed.file.environment.rows, parsed.level, parsed.file.environment.rewards);
   sel().agent.Q.set(parsed.file.q);
   sel().tries = 100; // it already knows the world, so little random exploring
   caption(`Loaded ${parsed.file.card.name}'s brain from ${parsed.file.card.attempts} attempts. Watch how it does.`, 'think');

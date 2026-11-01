@@ -44,3 +44,28 @@ export function parseAgent(obj) {
   if (!Array.isArray(q) || q.length === 0 || q.length % 4 !== 0 || q.length / 4 > MAX_STATES || !q.every(x => Number.isFinite(x) && Math.abs(x) < 1000)) return bad('The learned values in this file are not valid.');
   return { ok: true, file: obj, level: v.level };
 }
+
+/* ---------- environment files: just the world and its rules ---------- */
+export const ENV_FORMAT = 'ai-training-3d/environment';
+
+export function exportEnvironment({ rows, rewards, name }) {
+  return { format: ENV_FORMAT, version: VERSION, created: new Date().toISOString(), card: { name }, environment: { rows, rewards: { ...rewards } } };
+}
+
+function checkWorld(env) {
+  const rows = env && env.environment && env.environment.rows;
+  if (!Array.isArray(rows) || rows.length !== SIZE) return { error: 'The maze in this file is not valid.' };
+  const v = validate(rows);
+  if (!v.ok) return { error: v.problems[0] };
+  const rw = env.environment.rewards;
+  if (!rw || !['goal', 'key', 'pit', 'bump', 'step'].every(k => Number.isFinite(rw[k]) && Math.abs(rw[k]) <= 100)) return { error: 'The rewards in this file are not valid.' };
+  return { level: v.level };
+}
+
+/** Check an environment file. Returns { ok, error, file, level } and never throws. */
+export function parseEnvironment(obj) {
+  if (!obj || typeof obj !== 'object' || obj.format !== ENV_FORMAT) return { ok: false, error: 'This is not an AI Training 3D maze file.' };
+  if (obj.version !== VERSION) return { ok: false, error: 'This file was made by a different version.' };
+  const w = checkWorld(obj);
+  return w.error ? { ok: false, error: w.error } : { ok: true, file: obj, level: w.level };
+}
