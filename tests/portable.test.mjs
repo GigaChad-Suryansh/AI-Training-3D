@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { exportAgent, parseAgent } from '../src/core/portable.js';
+import { exportAgent, parseAgent, exportEnvironment, parseEnvironment } from '../src/core/portable.js';
 import { starterRows, validate } from '../src/core/custom.js';
 import { Learner } from '../src/core/learner.js';
 import { REWARDS, HP } from '../src/core/agent.js';
@@ -29,4 +29,11 @@ test('bad files are refused with a message', () => {
   assert.match(parseAgent({ ...good, q: good.q.map(() => NaN) }).error, /learned values/);
   assert.match(parseAgent({ ...good, environment: { ...good.environment, rewards: { goal: 1 } } }).error, /rewards/);
   assert.match(parseAgent({ ...good, environment: { ...good.environment, rows: ['x'] } }).error, /maze/);
+});
+test('environment files round trip and refuse agent files', () => {
+  const env = JSON.parse(JSON.stringify(exportEnvironment({ rows: starterRows(), rewards: REWARDS, name: 'x' })));
+  assert.ok(parseEnvironment(env).ok);
+  assert.match(parseEnvironment({ ...env, environment: { ...env.environment, rows: starterRows().map(r => r.replace(/[SG]/g, '.')) } }).error, /start/i);
+  const { ln } = trained();
+  assert.match(parseEnvironment(exportAgent({ learner: ln, rows: starterRows(), rewards: REWARDS, hp: HP, levelName: 'x' })).error, /not an AI Training/);
 });

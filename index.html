@@ -23,6 +23,7 @@
         <span>AI Training 3D</span>
       </div>
       <div class="segmented levels" id="levels" role="group" aria-label="Level"></div>
+      <a class="learn-link" href="./gallery.html" title="Starter worlds">Gallery</a>
       <a class="learn-link" href="./learn.html" title="How the robot learns">How It Learns</a>
       <div class="segmented" id="appearance" role="group" aria-label="Appearance">
         <button type="button" data-mode="system" aria-pressed="true" aria-label="Match system appearance" title="Match System">
@@ -81,6 +82,7 @@
       <div class="edit-grid" id="editGrid" role="group" aria-label="Maze, 9 by 9"></div>
       <p class="edit-status" id="editStatus" role="status"></p>
       <button class="btn primary wide" id="editApply" type="button">Train on This Maze</button>
+      <button class="btn wide" id="editExport" type="button">Download Maze File</button>
       <button class="btn wide" id="editShare" type="button">Copy Share Link</button>
       <button class="btn wide" id="editReset" type="button">Reset to Starter Maze</button>
     </section>
@@ -91,7 +93,7 @@
       <button class="btn wide" id="addBot" type="button">Add Robot</button>
       <div class="split">
         <button class="btn" id="exportBot" type="button">Export Brain</button>
-        <button class="btn" id="importBot" type="button">Import Brain</button>
+        <button class="btn" id="importBot" type="button">Import File</button>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
       <p class="note">Drag the robot token onto the maze, or press Add Robot. Each one learns on its own, so you can watch them race. Select a robot to see its map and progress.</p>

@@ -26,11 +26,11 @@ What it cannot do yet: nothing leaves the browser except a maze link. There are 
 Goal: an agent and a world become files you can keep and share. This is the foundation of any hub.
 
 - [x] Share a maze by link
-- [ ] **Agent files:** export a trained robot as a small JSON file and import it back (started in this release)
-- [ ] **Environment files:** a documented format for a world (grid, rewards, rules), versioned
-- [ ] **Agent cards:** every export carries a short card: what it was trained on, how many attempts, success rate, best route, learning settings
-- [ ] A written spec in `docs/SPEC.md` so other people can build against the formats
-- [ ] A gallery page of hand-picked starter worlds with one-click open
+- [x] **Agent files:** export a trained robot as a small JSON file and import it back
+- [x] **Environment files:** a documented format for a world (grid, rewards), versioned
+- [x] **Agent cards:** every export carries a short card: what it was trained on, how many attempts, success rate, best route
+- [x] A written spec in [docs/SPEC.md](docs/SPEC.md) so other people can build against the formats
+- [x] A gallery page of hand-picked starter worlds with one-click open
 
 Done when: someone can train a robot, send the file to a friend, and the friend sees it perform.
 
@@ -98,4 +98,4 @@ These are targets to aim at, not forecasts. Phase 1 replaces the guesses with re
 
 ## Next up
 
-Finish Phase 1, starting with agent files, then the written spec. The agent export and import work is in this release.
+Phase 1 is complete. Next is Phase 2, the hub. It needs a server, so the first step is choosing a hosted backend (accounts, database, storage) and building publish and browse on top of the file formats above.
